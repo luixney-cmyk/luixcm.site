@@ -5,13 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestor CM - Sen. Ivideliza Reyes</title>
     
-    <!-- 1. Cargar Tailwind CSS para el diseño -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. Cargar Babel para traducir React en el navegador -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 3. Importar React, iconos de Lucide y Firebase -->
     <script type="importmap">
     {
         "imports": {
@@ -29,17 +25,16 @@
     
     <div id="root"></div>
 
-    <!-- 4. El Código de tu Aplicación (Todo en uno) -->
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut } from 'lucide-react';
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut, Key } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
-        // --- TUS CREDENCIALES REALES ---
+        // Llaves de Firebase (Es seguro que estas sean públicas si el dominio está autorizado)
         const firebaseConfig = {
             apiKey: "AIzaSyA7xjysJVQb3tYEb8ZU9yHbs-MBDWVUhk4",
             authDomain: "gestor-ivi.firebaseapp.com",
@@ -55,9 +50,8 @@
         const db = getFirestore(app);
         const provider = new GoogleAuthProvider();
         const appId = firebaseConfig.projectId;
-        const apiKey = "AQ.Ab8RN6LSaw5m2eDZkpbEQsIbMEk6wAXl7KGkEJTmOikoFwUfyw"; 
 
-        // --- FUNCIONES UTILITARIAS ---
+        // Utilidades
         const copyToClipboard = (text) => {
             const textArea = document.createElement("textarea");
             textArea.value = text;
@@ -74,34 +68,16 @@
 
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-        const fetchGeminiWithRetry = async (payload, retries = 5) => {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            let attempt = 0;
-            const backoff = [1000, 2000, 4000, 8000, 16000];
-
-            while (attempt < retries) {
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-                    return await response.json();
-                } catch (error) {
-                    if (attempt === retries - 1) throw error;
-                    await delay(backoff[attempt]);
-                    attempt++;
-                }
-            }
-        };
-
-        // --- APLICACIÓN PRINCIPAL ---
         function App() {
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
             const [currentView, setCurrentView] = useState('manager'); 
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+            
+            // NUEVO: Estado para la llave de Gemini guardada en el dispositivo
+            const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini_api_key_ivi') || "");
+            const [showKeySetup, setShowKeySetup] = useState(false);
+            const [tempKeyInput, setTempKeyInput] = useState("");
 
             const [posts, setPosts] = useState([]);
             const [comments, setComments] = useState([]);
@@ -121,7 +97,6 @@
             const [aiReport, setAiReport] = useState(null);
             const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-            // Verificar si hay usuario de Google logueado
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
                     setUser(currentUser);
@@ -130,11 +105,15 @@
                 return () => unsubscribe();
             }, []);
 
-            // Cargar base de datos solo si el usuario está logueado
             useEffect(() => {
                 if (!user) return;
-                const uid = user.uid; // Ahora el ID es tu cuenta de Google real
+                
+                // Si el usuario entra y no tiene llave guardada, mostrar la pantalla de configuración
+                if (!geminiKey) {
+                    setShowKeySetup(true);
+                }
 
+                const uid = user.uid;
                 const postsRef = collection(db, 'artifacts', appId, 'users', uid, 'posts');
                 const commentsRef = collection(db, 'artifacts', appId, 'users', uid, 'comments');
                 const settingsRef = collection(db, 'artifacts', appId, 'users', uid, 'settings');
@@ -160,19 +139,44 @@
                 });
 
                 return () => { unsubPosts(); unsubComments(); unsubSettings(); };
-            }, [user]);
+            }, [user, geminiKey]);
 
-            // --- ACCIONES DE USUARIO ---
             const handleLogin = async () => {
-                try {
-                    await signInWithPopup(auth, provider);
-                } catch (error) {
-                    console.error(error);
-                    alert("Error al iniciar sesión: " + error.message);
-                }
+                try { await signInWithPopup(auth, provider); } 
+                catch (error) { alert("Error al iniciar sesión: " + error.message); }
             };
 
             const handleLogout = () => { signOut(auth); };
+
+            const saveApiKey = () => {
+                if(tempKeyInput.trim().length > 10) {
+                    localStorage.setItem('gemini_api_key_ivi', tempKeyInput.trim());
+                    setGeminiKey(tempKeyInput.trim());
+                    setShowKeySetup(false);
+                }
+            };
+
+            const fetchGeminiWithRetry = async (payload, retries = 5) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiKey}`;
+                let attempt = 0;
+                const backoff = [1000, 2000, 4000, 8000];
+
+                while (attempt < retries) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                        return await response.json();
+                    } catch (error) {
+                        if (attempt === retries - 1) throw error;
+                        await delay(backoff[attempt]);
+                        attempt++;
+                    }
+                }
+            };
 
             const saveGlobalStrategy = async () => {
                 setIsSavingStrategy(true);
@@ -180,20 +184,14 @@
                     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'global_strategy');
                     await setDoc(docRef, { text: globalStrategy, updatedAt: serverTimestamp() }, { merge: true });
                     setTimeout(() => setIsSavingStrategy(false), 1000);
-                } catch (err) {
-                    setErrorMsg("Error al guardar la estrategia.");
-                    setIsSavingStrategy(false);
-                }
+                } catch (err) { setErrorMsg("Error al guardar la estrategia."); setIsSavingStrategy(false); }
             };
 
             const createNewPost = async () => {
                 if (!newPostText.trim()) return;
                 try {
                     const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'posts'), {
-                        text: newPostText.trim(),
-                        context: "", 
-                        category: "Genérica", 
-                        createdAt: serverTimestamp()
+                        text: newPostText.trim(), context: "", category: "Genérica", createdAt: serverTimestamp()
                     });
                     setActivePostId(docRef.id);
                     setNewPostText("");
@@ -201,31 +199,10 @@
                 } catch (err) { setErrorMsg("Error al crear la publicación."); }
             };
 
-            const openContextModal = () => {
-                const activePost = posts.find(p => p.id === activePostId);
-                if (activePost) {
-                    setTempContextText(activePost.context || "");
-                    setIsContextModalOpen(true);
-                }
-            };
-
-            const savePostContext = async () => {
-                try {
-                    const postRef = doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePostId);
-                    await updateDoc(postRef, { context: tempContextText });
-                    setIsContextModalOpen(false);
-                } catch (err) { setErrorMsg("Error al guardar el contexto."); }
-            };
-
-            const updatePostCategory = async (postId, category) => {
-                try {
-                    const postRef = doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId);
-                    await updateDoc(postRef, { category });
-                } catch (err) { setErrorMsg("Error al actualizar la categoría."); }
-            };
-
             const handleGenerateResponses = async () => {
                 if (!newCommentsText.trim() || !activePostId || isGenerating) return;
+                if (!geminiKey) { setShowKeySetup(true); return; }
+                
                 setIsGenerating(true);
                 setErrorMsg("");
                 const activePost = posts.find(p => p.id === activePostId);
@@ -239,21 +216,9 @@
                 }
 
                 const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST: ${activePost.context}` : "";
-                const globalContext = globalStrategy?.trim() ? `\nLÍNEA DISCURSIVA / ESTRATEGIA GLOBAL ACTUAL (OBLIGATORIA APLICAR SI EL TEMA SALE A COLACIÓN): ${globalStrategy}` : "";
+                const globalContext = globalStrategy?.trim() ? `\nLÍNEA DISCURSIVA / ESTRATEGIA GLOBAL ACTUAL: ${globalStrategy}` : "";
 
-                const systemPrompt = `
-                    Eres el Community Manager de la Senadora Ivideliza Reyes Hernández (Nayarit). 
-                    Perfil: Ex presidenta municipal de La Yesca, ex diputada, Senadora de oposición por 1ra minoría (PAN).
-                    ${categoryInstructions}
-                    ${postContext}
-                    ${globalContext}
-                    
-                    Reglas:
-                    1. Extrae nombre del usuario.
-                    2. NUNCA inicies con "Hola [Nombre]". Facebook ya los etiqueta.
-                    3. Analiza el sentimiento del comentario en una de estas 4 opciones estrictamente: 'Positivo', 'Neutro', 'Reclamo' (queja legítima ciudadana), o 'Negativo' (troll, insultos, hostilidad abierta).
-                `;
-
+                const systemPrompt = `Eres el Community Manager de la Senadora Ivideliza Reyes Hernández (Nayarit). ${categoryInstructions} ${postContext} ${globalContext} Reglas: 1. Extrae nombre. 2. NUNCA inicies con "Hola [Nombre]". 3. Analiza el sentimiento en: 'Positivo', 'Neutro', 'Reclamo' o 'Negativo'.`;
                 const userPrompt = `PUBLICACIÓN:\n"${activePost.text}"\n\nCOMENTARIOS:\n${newCommentsText}`;
 
                 const payload = {
@@ -263,16 +228,7 @@
                         responseMimeType: "application/json",
                         responseSchema: {
                         type: "ARRAY",
-                        items: {
-                            type: "OBJECT",
-                            properties: {
-                            nombreUsuario: { type: "STRING" },
-                            comentarioOriginal: { type: "STRING" },
-                            sentimiento: { type: "STRING", description: "Debe ser: Positivo, Neutro, Reclamo, o Negativo" },
-                            respuestaGenerada: { type: "STRING" }
-                            },
-                            required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada"]
-                        }
+                        items: { type: "OBJECT", properties: { nombreUsuario: { type: "STRING" }, comentarioOriginal: { type: "STRING" }, sentimiento: { type: "STRING" }, respuestaGenerada: { type: "STRING" } }, required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada"] }
                         }
                     }
                 };
@@ -280,124 +236,35 @@
                 try {
                     const data = await fetchGeminiWithRetry(payload);
                     const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!jsonText) throw new Error("Asegúrate de que la API key de Gemini sea válida.");
+                    if (!jsonText) throw new Error("Asegúrate de que tu API key sea válida.");
                     
                     const generatedItems = JSON.parse(jsonText);
-                    
                     for (const item of generatedItems) {
                         await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'comments'), {
-                            postId: activePostId,
-                            nombreUsuario: item.nombreUsuario || 'Desconocido',
-                            originalComment: item.comentarioOriginal,
-                            sentiment: item.sentimiento,
-                            generatedResponse: item.respuestaGenerada,
-                            createdAt: serverTimestamp()
+                            postId: activePostId, nombreUsuario: item.nombreUsuario || 'Usuario', originalComment: item.comentarioOriginal, sentiment: item.sentimiento, generatedResponse: item.respuestaGenerada, createdAt: serverTimestamp()
                         });
                     }
                     setNewCommentsText("");
                 } catch (err) {
-                    console.error(err);
-                    setErrorMsg("Error al generar respuestas. Revisa tu API Key de Gemini en el código.");
+                    setErrorMsg("Error. Verifica que tu Llave de Gemini (API Key) sea correcta.");
+                    setShowKeySetup(true);
                 } finally { setIsGenerating(false); }
             };
 
             const handleCopy = (id, text) => {
-                if (copyToClipboard(text)) {
-                    setCopiedId(id);
-                    setTimeout(() => setCopiedId(null), 2000);
-                }
+                if (copyToClipboard(text)) { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }
             };
 
-            // --- REPORTE IA Y MÉTRICAS ---
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
-            
-            const monthlyPosts = posts.filter(p => {
-                if (!p.createdAt) return false;
-                const d = p.createdAt.toDate();
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
+            if (authLoading) return <div className="flex items-center justify-center h-screen bg-slate-50"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
-            const monthlyComments = comments.filter(c => {
-                if (!c.createdAt) return false;
-                const d = c.createdAt.toDate();
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
-
-            const generateAIReport = async () => {
-                setIsGeneratingReport(true);
-                
-                const catCounts = { Familiar: 0, Genérica: 0, Legislativa: 0, Política: 0 };
-                monthlyPosts.forEach(p => { if(catCounts[p.category]!==undefined) catCounts[p.category]++; });
-                
-                const sentCounts = { Positivo: 0, Neutro: 0, Reclamo: 0, Negativo: 0 };
-                monthlyComments.forEach(c => {
-                    const s = c.sentiment || (c.isHostile ? 'Negativo' : 'Neutro');
-                    if(sentCounts[s]!==undefined) sentCounts[s]++; 
-                });
-
-                const sampleTexts = monthlyPosts.map(p => p.text).join(" | ").substring(0, 3000);
-
-                const prompt = `
-                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes este mes.
-                    Datos del mes:
-                    - Publicaciones totales: ${monthlyPosts.length}
-                    - Desglose por tipo: ${JSON.stringify(catCounts)}
-                    - Comentarios totales recibidos: ${monthlyComments.length}
-                    - Desglose de sentimientos: ${JSON.stringify(sentCounts)}
-                    - Muestra de textos publicados: ${sampleTexts}
-
-                    Extrae y analiza:
-                    1. Cuál fue el tema más recurrente o importante.
-                    2. Un análisis situacional de 1 párrafo sobre cómo se siente la temperatura ciudadana hacia ella basada en la proporción de comentarios a favor vs reclamos/negativos.
-                    3. 3 propuestas de mejora o consejos prácticos para el equipo de redes.
-                `;
-
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                temaPrincipal: { type: "STRING" },
-                                analisisSituacion: { type: "STRING" },
-                                propuestas: { type: "ARRAY", items: { type: "STRING" } }
-                            }
-                        }
-                    }
-                };
-
-                try {
-                    const data = await fetchGeminiWithRetry(payload);
-                    const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
-                    
-                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'ai_report');
-                    await setDoc(docRef, { report: result, generatedAt: serverTimestamp() });
-                    setAiReport(result);
-                } catch (err) {
-                    setErrorMsg("Error al generar el reporte de IA.");
-                } finally {
-                    setIsGeneratingReport(false);
-                }
-            };
-
-            // --- VISTAS CONDICIONALES ---
-
-            if (authLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50 text-slate-500 gap-4"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div><p>Cargando plataforma...</p></div>;
-
-            // PANTALLA DE LOGIN CON GOOGLE
             if (!user) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-slate-100">
                         <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-200 m-4">
-                            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <Target className="w-10 h-10 text-blue-600" />
-                            </div>
-                            <h1 className="text-2xl font-black text-slate-800 mb-2">Gestor de Redes CMS</h1>
-                            <p className="text-slate-500 mb-8 font-medium">Plataforma estratégica - Sen. Ivideliza Reyes</p>
-                            
-                            <button onClick={handleLogin} className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 py-3 px-4 rounded-xl font-bold transition-all shadow-sm">
+                            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><Target className="w-10 h-10 text-blue-600" /></div>
+                            <h1 className="text-2xl font-black text-slate-800 mb-2">Gestor de Redes CM</h1>
+                            <p className="text-slate-500 mb-8 font-medium">Sen. Ivideliza Reyes</p>
+                            <button onClick={handleLogin} className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-700 py-3 px-4 rounded-xl font-bold transition-all shadow-sm">
                                 <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
                                 Ingresar con Google
                             </button>
@@ -406,27 +273,28 @@
                 );
             }
 
+            if (showKeySetup) {
+                return (
+                    <div className="flex items-center justify-center h-screen bg-slate-900 p-4">
+                        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-lg w-full border-4 border-blue-500">
+                            <div className="flex items-center gap-3 mb-4 text-blue-600"><Key className="w-8 h-8" /><h2 className="text-2xl font-black">Conexión de IA</h2></div>
+                            <p className="text-slate-600 mb-6 text-sm">Para proteger tu cuenta, la llave de Gemini no se guarda en el código público de GitHub. Se guardará de forma segura y privada en la memoria de este dispositivo.</p>
+                            <input type="text" value={tempKeyInput} onChange={e => setTempKeyInput(e.target.value)} placeholder="Pega tu nueva API Key (empieza con AIzaSy...)" className="w-full p-4 rounded-xl border-2 border-slate-300 focus:border-blue-500 outline-none mb-4 font-mono text-sm" />
+                            <button onClick={saveApiKey} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl">Conectar Sistema</button>
+                        </div>
+                    </div>
+                );
+            }
+
             const activePost = posts.find(p => p.id === activePostId);
             const activeComments = comments.filter(c => c.postId === activePostId);
 
-            const catCounts = { Familiar: 0, Genérica: 0, Legislativa: 0, Política: 0 };
-            monthlyPosts.forEach(p => { if(catCounts[p.category]!==undefined) catCounts[p.category]++; });
-            const sentCounts = { Positivo: 0, Neutro: 0, Reclamo: 0, Negativo: 0 };
-            monthlyComments.forEach(c => {
-                const s = c.sentiment || (c.isHostile ? 'Negativo' : 'Neutro');
-                if(sentCounts[s]!==undefined) sentCounts[s]++; 
-            });
-
-            // EL MISMO DISEÑO QUE ANTES
             return (
                 <div className="flex h-screen overflow-hidden relative">
-                    
                     {/* SIDEBAR */}
                     {isSidebarOpen && <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
                     <aside className={`fixed lg:static inset-y-0 left-0 w-80 bg-white border-r border-slate-200 z-50 transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-                        <div className="p-4 border-b border-slate-200 bg-blue-50/50">
-                        <h2 className="text-blue-800 font-bold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Historial</h2>
-                        </div>
+                        <div className="p-4 border-b border-slate-200 bg-blue-50/50"><h2 className="text-blue-800 font-bold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Historial</h2></div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         <button onClick={() => { setActivePostId(null); setCurrentView('manager'); setIsSidebarOpen(false); }} className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed font-medium transition-colors ${!activePostId && currentView === 'manager' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:bg-blue-50'}`}>
                             <Plus className="w-5 h-5" /> Nueva Publicación
@@ -435,10 +303,6 @@
                             {posts.map(post => (
                             <button key={post.id} onClick={() => { setActivePostId(post.id); setCurrentView('manager'); setIsSidebarOpen(false); }} className={`w-full text-left p-3 rounded-lg border transition-all ${activePostId === post.id && currentView === 'manager' ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
                                 <p className="text-sm line-clamp-2 text-slate-700">{post.text}</p>
-                                <div className="text-[10px] text-slate-400 mt-2 flex justify-between">
-                                <span className="font-semibold text-slate-500">{post.category}</span>
-                                <span>{comments.filter(c => c.postId === post.id).length} resp.</span>
-                                </div>
                             </button>
                             ))}
                         </div>
@@ -450,209 +314,71 @@
                         <header className="bg-white border-b border-slate-200 p-4 flex items-center justify-between z-10 shrink-0">
                         <div className="flex items-center gap-4">
                             <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-slate-500 lg:hidden rounded-lg hover:bg-slate-100"><Menu className="w-6 h-6" /></button>
-                            <div className="hidden md:flex bg-slate-100 p-1 rounded-lg">
-                            <button onClick={() => setCurrentView('manager')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'manager' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                <MessageSquare className="w-4 h-4" /> Gestión
-                            </button>
-                            <button onClick={() => setCurrentView('analysis')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'analysis' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                <BarChart3 className="w-4 h-4" /> Estrategia
-                            </button>
-                            </div>
+                            <h1 className="text-lg font-bold text-slate-800">Sen. Ivideliza Reyes</h1>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <h1 className="text-lg font-bold text-slate-800 hidden md:block">Sen. Ivideliza Reyes</h1>
-                            <div className="flex items-center gap-2">
-                                <img src={user.photoURL || "https://ui-avatars.com/api/?name=User"} className="w-8 h-8 rounded-full border border-slate-200" />
-                                <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-1 rounded-md transition-colors" title="Cerrar sesión"><LogOut className="w-5 h-5"/></button>
-                            </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => { localStorage.removeItem('gemini_api_key_ivi'); setGeminiKey(''); setShowKeySetup(true); }} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg flex items-center gap-1"><Key className="w-3 h-3"/> Cambiar Llave IA</button>
+                            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-1 rounded-md" title="Cerrar sesión"><LogOut className="w-5 h-5"/></button>
                         </div>
                         </header>
 
-                        {/* MOBILE TABS */}
-                        <div className="md:hidden flex bg-white border-b border-slate-200 shrink-0">
-                        <button onClick={() => setCurrentView('manager')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'manager' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Gestión</button>
-                        <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'analysis' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
-                        </div>
-
                         {errorMsg && <div className="bg-red-50 text-red-600 p-3 text-sm text-center border-b border-red-100">{errorMsg}</div>}
 
-                        <div className="flex-1 overflow-y-auto">
-                        
-                        {/* VISTA 1: GESTOR */}
-                        {currentView === 'manager' && (
-                            <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50">
                             {!activePostId ? (
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                                <div className="flex items-center gap-3 mb-4 text-blue-700">
-                                    <MessageSquare className="w-6 h-6" />
-                                    <h2 className="text-lg font-semibold">1. Pega la publicación original</h2>
-                                </div>
-                                <textarea value={newPostText} onChange={(e) => setNewPostText(e.target.value)} placeholder="Ej: Seguimos trabajando por Nayarit..." className="w-full h-40 p-4 rounded-xl border border-slate-300 focus:border-blue-500 outline-none resize-none text-slate-700" />
-                                <div className="mt-4 flex justify-end">
-                                    <button onClick={createNewPost} disabled={!newPostText.trim()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50">Guardar <ChevronRight className="w-5 h-5" /></button>
-                                </div>
+                                <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                                    <div className="flex items-center gap-3 mb-4 text-blue-700"><MessageSquare className="w-6 h-6" /><h2 className="text-lg font-semibold">1. Pega la publicación original</h2></div>
+                                    <textarea value={newPostText} onChange={(e) => setNewPostText(e.target.value)} placeholder="Ej: Seguimos trabajando por Nayarit..." className="w-full h-40 p-4 rounded-xl border border-slate-300 focus:border-blue-500 outline-none resize-none text-slate-700" />
+                                    <div className="mt-4 flex justify-end"><button onClick={createNewPost} disabled={!newPostText.trim()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50">Guardar <ChevronRight className="w-5 h-5" /></button></div>
                                 </div>
                             ) : (
-                                <div className="space-y-6">
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                                    <div className="flex justify-between items-start mb-2">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Publicación Original</h3>
-                                    <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200">
-                                        <Settings className="w-3 h-3" /> {activePost?.context ? 'Contexto Activo' : '+ Contexto Específico'}
-                                    </button>
+                                <div className="max-w-4xl mx-auto space-y-6">
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative">
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Publicación Original</h3>
+                                        <p className="text-slate-600 text-sm whitespace-pre-wrap">{activePost?.text}</p>
+                                        <div className="mt-5 border-t border-slate-100 pt-4">
+                                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tono (Categoría)</p>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {[{ name: 'Familiar', icon: Users, bg: 'bg-pink-50', color: 'text-pink-600', border: 'border-pink-200' }, { name: 'Genérica', icon: FileText, bg: 'bg-slate-50', color: 'text-slate-600', border: 'border-slate-200' }, { name: 'Legislativa', icon: BookOpen, bg: 'bg-indigo-50', color: 'text-indigo-600', border: 'border-indigo-200' }, { name: 'Política', icon: Megaphone, bg: 'bg-orange-50', color: 'text-orange-600', border: 'border-orange-200' }].map(cat => {
+                                                    const isActive = (activePost?.category || 'Genérica') === cat.name;
+                                                    return <button key={cat.name} onClick={() => { updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePost.id), { category: cat.name }); }} className={`p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 border-2 transition-all ${isActive ? `${cat.bg} ${cat.color} ${cat.border} shadow-sm scale-105` : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}><cat.icon className="w-4 h-4" /> {cat.name}</button>
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <p className="text-slate-600 text-sm whitespace-pre-wrap">{activePost?.text}</p>
-                                    
-                                    <div className="mt-5 border-t border-slate-100 pt-4">
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tono de Respuestas (Categoría)</p>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                        {[
-                                        { name: 'Familiar', icon: Users, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-200' },
-                                        { name: 'Genérica', icon: FileText, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
-                                        { name: 'Legislativa', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200' },
-                                        { name: 'Política', icon: Megaphone, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' }
-                                        ].map(cat => {
-                                        const isActive = (activePost?.category || 'Genérica') === cat.name;
-                                        return (
-                                            <button key={cat.name} onClick={() => updatePostCategory(activePost.id, cat.name)} className={`p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 border-2 transition-all ${isActive ? `${cat.bg} ${cat.color} ${cat.border} shadow-sm scale-105` : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
-                                            <cat.icon className="w-4 h-4" /> {cat.name}
-                                            </button>
-                                        );
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                                        <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios de Facebook</h3>
+                                        <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega los comentarios copiados..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
+                                        <button onClick={handleGenerateResponses} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold">
+                                            {isGenerating ? "Redactando..." : <><Send className="w-5 h-5" /> Generar Respuestas</>}
+                                        </button>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {activeComments.map((comment) => {
+                                            const isNegative = comment.sentiment === 'Negativo' || comment.sentiment === 'Reclamo' || comment.isHostile;
+                                            return (
+                                                <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${isNegative ? 'border-red-300' : 'border-slate-200'}`}>
+                                                    <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3">
+                                                        <div className="flex justify-between items-start"><span className="font-bold text-sm flex items-center gap-2"><User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}</span></div>
+                                                        <div className="bg-slate-50 p-2 rounded border border-slate-100 text-sm text-slate-600 italic">"{comment.originalComment}"</div>
+                                                        <div className="text-base text-slate-800">{comment.generatedResponse}</div>
+                                                    </div>
+                                                    <div className="p-4 md:w-1/3 bg-slate-50 flex items-center justify-center">
+                                                        <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white text-blue-600 border-2 border-blue-100 hover:bg-blue-50'}`}>{copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> Copiado</> : <><Copy className="w-5 h-5"/> Copiar</>}</button>
+                                                    </div>
+                                                </div>
+                                            )
                                         })}
                                     </div>
-                                    </div>
-                                </div>
-
-                                {globalStrategy && (
-                                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-start gap-3">
-                                    <Target className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-xs font-bold text-purple-800 uppercase">Estrategia Global Activa</p>
-                                        <p className="text-sm text-purple-900 mt-1">{globalStrategy}</p>
-                                    </div>
-                                    </div>
-                                )}
-
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                                    <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios de Facebook</h3>
-                                    <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega los comentarios copiados..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
-                                    <button onClick={handleGenerateResponses} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold">
-                                    {isGenerating ? "Redactando..." : <><Send className="w-5 h-5" /> Generar Respuestas</>}
-                                    </button>
-                                </div>
-
-                                <div className="space-y-4">
-                                    {activeComments.map((comment) => {
-                                    const isNegative = comment.sentiment === 'Negativo' || comment.sentiment === 'Reclamo' || comment.isHostile;
-                                    return (
-                                        <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${isNegative ? 'border-red-300' : 'border-slate-200'}`}>
-                                        <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3">
-                                            <div className="flex justify-between items-start">
-                                            <span className="font-bold text-sm flex items-center gap-2"><User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}</span>
-                                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${isNegative ? 'bg-red-100 text-red-700' : comment.sentiment === 'Positivo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                {comment.sentiment || (comment.isHostile ? 'Hostil' : 'Neutro')}
-                                            </span>
-                                            </div>
-                                            <div className="bg-slate-50 p-2 rounded border border-slate-100 text-sm text-slate-600 italic">"{comment.originalComment}"</div>
-                                            <div className="text-base text-slate-800">{comment.generatedResponse}</div>
-                                        </div>
-                                        <div className="p-4 md:w-1/3 bg-slate-50 flex items-center justify-center">
-                                            <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white text-blue-600 border-2 border-blue-100 hover:bg-blue-50'}`}>
-                                            {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> Copiado</> : <><Copy className="w-5 h-5"/> Copiar</>}
-                                            </button>
-                                        </div>
-                                        </div>
-                                    )
-                                    })}
-                                </div>
                                 </div>
                             )}
-                            </div>
-                        )}
-
-                        {/* VISTA 2: ANÁLISIS Y ESTRATEGIA */}
-                        {currentView === 'analysis' && (
-                            <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-                            <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
-                                <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
-                                <Target className="w-6 h-6 text-purple-700" />
-                                <div>
-                                    <h2 className="font-bold text-purple-900 text-lg">Línea Discursiva / Estrategia Global</h2>
-                                </div>
-                                </div>
-                                <div className="p-5">
-                                <textarea value={globalStrategy} onChange={(e) => setGlobalStrategy(e.target.value)} placeholder="Ej: Si preguntan por X tema, contesta Y..." className="w-full h-28 p-4 rounded-xl border border-slate-300 focus:border-purple-500 outline-none resize-none text-slate-700" />
-                                <div className="mt-3 flex justify-end">
-                                    <button onClick={saveGlobalStrategy} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl font-bold">
-                                    {isSavingStrategy ? "Guardando..." : "Aplicar Estrategia"}
-                                    </button>
-                                </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4"><BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas del Mes</h3>
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-blue-50 rounded-xl p-4 text-center border border-blue-100">
-                                    <p className="text-3xl font-black text-blue-700">{monthlyPosts.length}</p>
-                                    <p className="text-xs font-bold text-blue-600 uppercase mt-1">Posts</p>
-                                    </div>
-                                    <div className="bg-emerald-50 rounded-xl p-4 text-center border border-emerald-100">
-                                    <p className="text-3xl font-black text-emerald-700">{monthlyComments.length}</p>
-                                    <p className="text-xs font-bold text-emerald-600 uppercase mt-1">Comentarios</p>
-                                    </div>
-                                </div>
-                                </div>
-
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col">
-                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultoría IA</h3>
-                                    <button onClick={generateAIReport} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50">
-                                    {isGeneratingReport ? "Analizando..." : "Generar Reporte"}
-                                    </button>
-                                </div>
-                                <div className="p-5 flex-1 overflow-y-auto">
-                                    {!aiReport ? (
-                                    <p className="text-sm text-slate-400 text-center mt-10">Genera un reporte para el diagnóstico del mes.</p>
-                                    ) : (
-                                    <div className="space-y-5">
-                                        <div><p className="text-xs font-bold text-blue-600 uppercase">Tema Principal</p><p className="text-lg font-black text-slate-800">{aiReport.temaPrincipal}</p></div>
-                                        <div><p className="text-xs font-bold text-slate-400 uppercase">Diagnóstico</p><p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">{aiReport.analisisSituacion}</p></div>
-                                    </div>
-                                    )}
-                                </div>
-                                </div>
-                            </div>
-                            </div>
-                        )}
                         </div>
                     </main>
-
-                    {/* MODAL DE CONTEXTO */}
-                    {isContextModalOpen && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
-                            <div className="p-4 border-b flex justify-between bg-slate-50">
-                            <h2 className="font-bold flex items-center gap-2"><Settings className="w-5 h-5 text-slate-500" /> Contexto Específico</h2>
-                            <button onClick={() => setIsContextModalOpen(false)}><X className="w-6 h-6 text-slate-400" /></button>
-                            </div>
-                            <div className="p-6">
-                            <textarea value={tempContextText} onChange={(e) => setTempContextText(e.target.value)} placeholder="Contexto para este post en particular..." className="w-full h-32 p-4 rounded-xl border border-slate-300 outline-none resize-none" />
-                            </div>
-                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setIsContextModalOpen(false)} className="px-4 py-2 text-slate-600">Cancelar</button>
-                            <button onClick={savePostContext} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold">Guardar</button>
-                            </div>
-                        </div>
-                        </div>
-                    )}
                 </div>
             );
         }
 
-        // --- RENDERIZADO (Reemplaza el antiguo index.js) ---
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
