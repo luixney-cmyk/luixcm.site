@@ -11,23 +11,40 @@
     <!-- 2. Cargar Babel para traducir React en el navegador -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 3. Importar React, iconos de Lucide y Firebase (con ?bundle para evitar sobrecompilación) -->
+    <!-- 3. Importar React, iconos y Firebase (Solución de dependencias) -->
     <script type="importmap">
     {
         "imports": {
-            "react": "https://esm.sh/react@18.2.0?bundle",
-            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?bundle",
-            "lucide-react": "https://esm.sh/lucide-react@0.344.0?bundle",
-            "firebase/app": "https://esm.sh/firebase@10.8.1/app?bundle",
-            "firebase/auth": "https://esm.sh/firebase@10.8.1/auth?bundle",
-            "firebase/firestore": "https://esm.sh/firebase@10.8.1/firestore?bundle"
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?external=react",
+            "lucide-react": "https://esm.sh/lucide-react@0.344.0?bundle&external=react",
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js"
         }
     }
+    </script>
+
+    <!-- Capturador de errores global por si algo falla -->
+    <script>
+        window.addEventListener('error', function(event) {
+            const root = document.getElementById('root');
+            if(root) {
+                root.innerHTML = '<div style="padding:20px; color:red; font-family:sans-serif; text-align:center;"><b>Error crítico en la aplicación:</b><br><br>' + event.message + '<br><br>Revisa la consola (F12) para más detalles.</div>';
+            }
+        });
     </script>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
     
-    <div id="root"></div>
+    <div id="root">
+        <!-- Loader inicial nativo para evitar pantalla blanca total -->
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; color:#64748b;">
+            <div style="width:40px; height:40px; border:4px solid #3b82f6; border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></div>
+            <p style="margin-top:20px; font-weight:bold;">Cargando Gestor CM...</p>
+            <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+        </div>
+    </div>
 
     <!-- 4. El Código de tu Aplicación -->
     <script type="text/babel" data-type="module">
@@ -125,7 +142,7 @@
             // Estados para el modal de API Key
             const [isApiModalOpen, setIsApiModalOpen] = useState(false);
             const [tempApiKey, setTempApiKey] = useState("");
-            const [pendingAction, setPendingAction] = useState(null); // Guarda lo que ibas a hacer antes de pedir la key
+            const [pendingAction, setPendingAction] = useState(null);
 
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -172,7 +189,7 @@
                     await signInWithPopup(auth, provider);
                 } catch (error) {
                     console.error(error);
-                    setLoginError("Error al iniciar sesión: " + error.message + " (Si estás en vista previa, los popups pueden estar bloqueados)");
+                    setLoginError("Error al iniciar sesión: " + error.message + " (Asegúrate de permitir las ventanas emergentes en tu navegador)");
                 }
             };
 
@@ -228,11 +245,10 @@
                 } catch (err) { setErrorMsg("Error al actualizar la categoría."); }
             };
 
-            // Manejo de la API Key con Interfaz Gráfica
             const executeWithApiKey = (actionCallback) => {
                 const key = localStorage.getItem('gemini_api_key');
                 if (!key) {
-                    setPendingAction(() => actionCallback); // Guardamos la función para ejecutarla después de guardar la clave
+                    setPendingAction(() => actionCallback); 
                     setIsApiModalOpen(true);
                 } else {
                     actionCallback(key);
@@ -417,11 +433,12 @@
                 executeWithApiKey(runGenerateReport);
             };
 
-            if (authLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50 text-slate-500 gap-4"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div><p>Cargando plataforma...</p></div>;
+            // VISTAS 
+            if (authLoading) return null; // El loader HTML inicial se encarga de esto
 
             if (!user) {
                 return (
-                    <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-slate-100">
+                    <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-slate-100 relative z-10">
                         <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-200 m-4">
                             <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
                                 <Target className="w-10 h-10 text-blue-600" />
@@ -449,7 +466,7 @@
             const activeComments = comments.filter(c => c.postId === activePostId);
 
             return (
-                <div className="flex h-screen overflow-hidden relative">
+                <div className="flex h-screen overflow-hidden relative bg-slate-50 z-10">
                     
                     {/* SIDEBAR */}
                     {isSidebarOpen && <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
@@ -681,7 +698,7 @@
                         </div>
                     )}
 
-                    {/* MODAL PARA SOLICITAR API KEY (Reemplaza a window.prompt) */}
+                    {/* MODAL PARA SOLICITAR API KEY */}
                     {isApiModalOpen && (
                         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -713,8 +730,14 @@
             );
         }
 
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // Se usa try-catch para atrapar cualquier error antes de que quede la pantalla blanca
+        try {
+            const root = createRoot(document.getElementById('root'));
+            root.render(<App />);
+        } catch (error) {
+            console.error(error);
+            document.getElementById('root').innerHTML = '<div style="padding:20px; color:red; font-family:sans-serif; text-align:center;"><b>Error crítico al renderizar:</b><br><br>' + error.message + '</div>';
+        }
     </script>
 </body>
 </html>
