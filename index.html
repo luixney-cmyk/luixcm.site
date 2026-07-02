@@ -100,23 +100,48 @@
 
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
+        // --- CONFIGURACIÓN DE GEMINI ---
+        // IMPORTANTE: el modelo preview gemini-2.5-flash-preview-09-2025 ya fue apagado.
+        // Usamos el modelo estable actual para generateContent.
+        const GEMINI_MODEL = "gemini-2.5-flash";
+
         // Función ajustada para recibir el apiKey dinámicamente
-        const fetchGeminiWithRetry = async (payload, apiKey, retries = 5) => {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        const fetchGeminiWithRetry = async (payload, apiKey, retries = 3) => {
+            const cleanApiKey = (apiKey || "").trim().replace(/^['"]|['"]$/g, "");
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
             let attempt = 0;
-            const backoff = [1000, 2000, 4000, 8000, 16000];
+            const backoff = [1000, 2500, 5000];
 
             while (attempt < retries) {
                 try {
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-goog-api-key': cleanApiKey
+                        },
                         body: JSON.stringify(payload)
                     });
-                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
+                    if (!response.ok) {
+                        let detail = "";
+                        try {
+                            const errJson = await response.json();
+                            detail = errJson?.error?.message ? ` - ${errJson.error.message}` : "";
+                        } catch (_) {}
+
+                        if (response.status === 400) throw new Error(`Solicitud inválida a Gemini${detail}`);
+                        if (response.status === 401 || response.status === 403) throw new Error(`API Key rechazada o sin permisos para Gemini${detail}`);
+                        if (response.status === 404) throw new Error(`Modelo no encontrado o apagado: ${GEMINI_MODEL}${detail}`);
+                        if (response.status === 429) throw new Error(`Límite de uso/cuota alcanzado${detail}`);
+                        throw new Error(`Error Gemini ${response.status}${detail}`);
+                    }
+
                     return await response.json();
                 } catch (error) {
-                    if (attempt === retries - 1) throw error;
+                    const msg = String(error?.message || error);
+                    const retryable = msg.includes('429') || msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504') || msg.includes('Failed to fetch');
+                    if (!retryable || attempt === retries - 1) throw error;
                     await delay(backoff[attempt]);
                     attempt++;
                 }
@@ -288,11 +313,12 @@
             };
 
             const saveApiKeyAndExecute = () => {
-                if(tempApiKey.trim()) {
-                    localStorage.setItem('gemini_api_key', tempApiKey.trim());
+                const cleanKey = tempApiKey.trim().replace(/^['"]|['"]$/g, "");
+                if(cleanKey) {
+                    localStorage.setItem('gemini_api_key', cleanKey);
                     setIsApiModalOpen(false);
                     if(pendingAction) {
-                        pendingAction(tempApiKey.trim());
+                        pendingAction(cleanKey);
                         setPendingAction(null);
                     }
                 }
@@ -370,8 +396,8 @@
                     setNewCommentsText("");
                 } catch (err) {
                     console.error(err);
-                    setErrorMsg("Error al generar respuestas. Revisa que tu API Key sea correcta.");
-                    localStorage.removeItem('gemini_api_key'); 
+                    setErrorMsg("Error al generar respuestas: " + (err.message || "Revisa la API Key y el modelo de Gemini."));
+                    // No borramos la llave automáticamente: a veces el problema es cuota, modelo o permisos, no la clave. 
                 } finally { setIsGenerating(false); }
             };
 
@@ -454,8 +480,8 @@
                     await setDoc(docRef, { report: result, generatedAt: serverTimestamp() });
                     setAiReport(result);
                 } catch (err) {
-                    setErrorMsg("Error al generar el reporte de IA. Revisa tu API Key.");
-                    localStorage.removeItem('gemini_api_key');
+                    setErrorMsg("Error al generar el reporte de IA: " + (err.message || "Revisa la API Key y el modelo de Gemini."));
+                    // No borramos la llave automáticamente: a veces el problema es cuota, modelo o permisos, no la clave.
                 } finally {
                     setIsGeneratingReport(false);
                 }
