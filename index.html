@@ -50,12 +50,12 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Se agregaron los iconos Smile, Meh y Frown para los sentimientos
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut, Key, Smile, Meh, Frown } from 'lucide-react';
+        // Se agregaron los iconos Smile, Meh y Frown para los sentimientos, y Edit, Trash, FileClock, Check
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
-        import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+        import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 
         // --- CREDENCIALES DE FIREBASE ---
         const firebaseConfig = {
@@ -160,8 +160,14 @@
             
             const [isContextModalOpen, setIsContextModalOpen] = useState(false);
             const [tempContextText, setTempContextText] = useState("");
-            const [globalStrategy, setGlobalStrategy] = useState("");
+            
+            // Estados para el historial de Estrategias
+            const [strategies, setStrategies] = useState([]);
+            const [newStrategyText, setNewStrategyText] = useState("");
             const [isSavingStrategy, setIsSavingStrategy] = useState(false);
+            const [editingStrategyId, setEditingStrategyId] = useState(null);
+            const [editingStrategyText, setEditingStrategyText] = useState("");
+            const [strategySuccessMsg, setStrategySuccessMsg] = useState("");
 
             const [newPostText, setNewPostText] = useState("");
             const [newCommentsText, setNewCommentsText] = useState("");
@@ -170,8 +176,10 @@
             const [loginError, setLoginError] = useState("");
             const [copiedId, setCopiedId] = useState(null);
             
-            const [aiReport, setAiReport] = useState(null);
+            // Estados para el historial de Reportes de IA
+            const [aiReports, setAiReports] = useState([]);
             const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+            const [viewingReport, setViewingReport] = useState(null); // Reporte activo para el modal
 
             // Estados para el modal de API Key
             const [isApiModalOpen, setIsApiModalOpen] = useState(false);
@@ -199,7 +207,8 @@
 
                 const postsRef = collection(db, 'artifacts', appId, 'users', uid, 'posts');
                 const commentsRef = collection(db, 'artifacts', appId, 'users', uid, 'comments');
-                const settingsRef = collection(db, 'artifacts', appId, 'users', uid, 'settings');
+                const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); // Nueva colección
+                const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); // Nueva colección
 
                 const handleFirestoreError = async (err) => {
                     console.error(err);
@@ -223,15 +232,19 @@
                     setComments(fetchedComments);
                 }, handleFirestoreError);
 
-                const unsubSettings = onSnapshot(settingsRef, (snap) => {
-                    const globalDoc = snap.docs.find(d => d.id === 'global_strategy');
-                    if (globalDoc) setGlobalStrategy(globalDoc.data().text || "");
-                    
-                    const reportDoc = snap.docs.find(d => d.id === 'ai_report');
-                    if (reportDoc) setAiReport(reportDoc.data().report);
+                const unsubStrategies = onSnapshot(strategiesRef, (snap) => {
+                    const fetchedStrategies = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    fetchedStrategies.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                    setStrategies(fetchedStrategies);
                 }, handleFirestoreError);
 
-                return () => { unsubPosts(); unsubComments(); unsubSettings(); };
+                const unsubReports = onSnapshot(reportsRef, (snap) => {
+                    const fetchedReports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    fetchedReports.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                    setAiReports(fetchedReports);
+                }, handleFirestoreError);
+
+                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); };
             }, [user]);
 
             const handleLogin = async () => {
@@ -251,17 +264,49 @@
 
             const handleLogout = () => { signOut(auth); };
 
-            const saveGlobalStrategy = async () => {
+            // --- GESTIÓN DE ESTRATEGIAS ---
+            const saveNewStrategy = async () => {
+                if (!newStrategyText.trim()) return;
                 setIsSavingStrategy(true);
                 try {
-                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'global_strategy');
-                    await setDoc(docRef, { text: globalStrategy, updatedAt: serverTimestamp() }, { merge: true });
-                    setTimeout(() => setIsSavingStrategy(false), 1000);
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'strategies'), {
+                        text: newStrategyText.trim(),
+                        createdAt: serverTimestamp()
+                    });
+                    setNewStrategyText("");
+                    setStrategySuccessMsg("¡Instrucción guardada exitosamente!");
+                    setTimeout(() => setStrategySuccessMsg(""), 3000);
                 } catch (err) {
                     setErrorMsg("Error al guardar la estrategia.");
+                } finally {
                     setIsSavingStrategy(false);
                 }
             };
+
+            const deleteStrategy = async (id) => {
+                if(confirm("¿Estás seguro de eliminar esta instrucción?")) {
+                    try {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', id));
+                    } catch (err) { setErrorMsg("Error al eliminar la estrategia."); }
+                }
+            };
+
+            const startEditingStrategy = (strategy) => {
+                setEditingStrategyId(strategy.id);
+                setEditingStrategyText(strategy.text);
+            };
+
+            const saveEditedStrategy = async () => {
+                if (!editingStrategyText.trim()) return;
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', editingStrategyId), {
+                        text: editingStrategyText.trim()
+                    });
+                    setEditingStrategyId(null);
+                    setEditingStrategyText("");
+                } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
+            };
+            // ------------------------------
 
             const createNewPost = async () => {
                 if (!newPostText.trim()) return;
@@ -336,8 +381,11 @@
                     case 'Genérica': default: categoryInstructions = "CATEGORÍA: GENÉRICA. Respuestas amables de rutina ('Totalmente de acuerdo', 'Seguiremos trabajando'). Usa emojis. No te extiendas."; break;
                 }
 
+                // Concatenar todas las estrategias activas
+                const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
+
                 const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST: ${activePost.context}` : "";
-                const globalContext = globalStrategy?.trim() ? `\nLÍNEA DISCURSIVA / ESTRATEGIA GLOBAL ACTUAL (OBLIGATORIA APLICAR SI EL TEMA SALE A COLACIÓN): ${globalStrategy}` : "";
+                const globalContext = combinedStrategies ? `\nLÍNEAS DISCURSIVAS / ESTRATEGIAS GLOBALES ACTIVAS (OBLIGATORIAS APLICAR SI EL TEMA SALE A COLACIÓN):\n${combinedStrategies}` : "";
 
                 const systemPrompt = `
                     Eres el Community Manager de la Senadora Ivideliza Reyes Hernández (Nayarit). 
@@ -456,15 +504,24 @@
             const runGenerateReport = async (currentApiKey) => {
                 setIsGeneratingReport(true);
                 
+                const catCounts = { Familiar: 0, Genérica: 0, Legislativa: 0, Política: 0 };
+                monthlyPosts.forEach(p => { if(catCounts[p.category]!==undefined) catCounts[p.category]++; });
+                
+                const sentCounts = { Positivo: 0, Neutro: 0, Reclamo: 0, Negativo: 0 };
+                monthlyComments.forEach(c => {
+                    const s = c.sentiment || (c.isHostile ? 'Negativo' : 'Neutro');
+                    if(sentCounts[s]!==undefined) sentCounts[s]++; 
+                });
+
                 const sampleTexts = monthlyPosts.map(p => p.text).join(" | ").substring(0, 3000);
 
                 const prompt = `
-                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes este mes.
+                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes para el mes de ${currentMonthName} ${currentYear}.
                     Datos del mes:
                     - Publicaciones totales: ${monthlyPosts.length}
                     - Desglose por tipo: ${JSON.stringify(catCounts)}
                     - Comentarios totales recibidos: ${monthlyComments.length}
-                    - Desglose de sentimientos (Positivos: ${sentPos}, Neutrales: ${sentNeu}, Negativos/Reclamos: ${sentNeg})
+                    - Desglose de sentimientos: ${JSON.stringify(sentCounts)}
                     - Muestra de textos publicados: ${sampleTexts}
 
                     Extrae y analiza:
@@ -492,9 +549,15 @@
                     const data = await fetchGeminiWithRetry(payload, currentApiKey);
                     const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
                     
-                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'ai_report');
-                    await setDoc(docRef, { report: result, generatedAt: serverTimestamp() });
-                    setAiReport(result);
+                    // Guardar como un nuevo reporte en el historial
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ai_reports'), {
+                        title: `Reporte ${currentMonthName} ${currentYear}`,
+                        report: result,
+                        month: currentMonth,
+                        year: currentYear,
+                        createdAt: serverTimestamp()
+                    });
+                    
                 } catch (err) {
                     setErrorMsg("Error al generar el reporte de IA: " + (err.message || "Revisa la API Key y el modelo de Gemini."));
                 } finally {
@@ -693,29 +756,73 @@
                             </div>
                         )}
 
-                        {/* VISTA 2: ANÁLISIS Y ESTRATEGIA (ACTUALIZADA) */}
+                        {/* VISTA 2: ANÁLISIS Y ESTRATEGIA (RECONSTRUIDA PARA HISTORIALES) */}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
+                            
+                            {/* CAJA DE NUEVA ESTRATEGIA */}
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
                                 <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
                                 <Target className="w-6 h-6 text-purple-700" />
                                 <div>
-                                    <h2 className="font-bold text-purple-900 text-lg">Línea Discursiva / Estrategia Global</h2>
+                                    <h2 className="font-bold text-purple-900 text-lg">Nueva Instrucción / Línea Discursiva</h2>
                                 </div>
                                 </div>
                                 <div className="p-5">
-                                <textarea value={globalStrategy} onChange={(e) => setGlobalStrategy(e.target.value)} placeholder="Ej: Si preguntan por X tema, contesta Y..." className="w-full h-28 p-4 rounded-xl border border-slate-300 focus:border-purple-500 outline-none resize-none text-slate-700" />
-                                <div className="mt-3 flex justify-end">
-                                    <button onClick={saveGlobalStrategy} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl font-bold">
-                                    {isSavingStrategy ? "Guardando..." : "Aplicar Estrategia"}
+                                <textarea value={newStrategyText} onChange={(e) => setNewStrategyText(e.target.value)} placeholder="Ej: Siempre contestar en primera persona..." className="w-full h-20 p-4 rounded-xl border border-slate-300 focus:border-purple-500 outline-none resize-none text-slate-700" />
+                                
+                                <div className="mt-3 flex justify-between items-center">
+                                    <div className="text-sm font-medium text-green-600 flex items-center gap-1 min-h-[24px]">
+                                        {strategySuccessMsg && <><Check className="w-4 h-4"/> {strategySuccessMsg}</>}
+                                    </div>
+                                    <button onClick={saveNewStrategy} disabled={isSavingStrategy || !newStrategyText.trim()} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors">
+                                    {isSavingStrategy ? "Guardando..." : "Agregar a la lista"}
                                     </button>
                                 </div>
                                 </div>
                             </div>
 
+                            {/* HISTORIAL DE ESTRATEGIAS ACTIVAS */}
+                            {strategies.length > 0 && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="bg-slate-50 p-3 border-b border-slate-100">
+                                        <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2"><Target className="w-4 h-4 text-purple-500"/> Manual de Instrucciones Activas</h3>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        {strategies.map((strategy, index) => (
+                                            <div key={strategy.id} className="p-3 bg-purple-50/50 border border-purple-100 rounded-lg flex gap-3 group relative">
+                                                <div className="text-purple-400 font-bold text-sm mt-0.5">{index + 1}.</div>
+                                                <div className="flex-1">
+                                                    {editingStrategyId === strategy.id ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            <textarea value={editingStrategyText} onChange={(e) => setEditingStrategyText(e.target.value)} className="w-full p-2 border border-purple-300 rounded-md focus:outline-none text-sm" rows="3" />
+                                                            <div className="flex justify-end gap-2">
+                                                                <button onClick={() => setEditingStrategyId(null)} className="px-3 py-1 text-xs text-slate-500 hover:bg-slate-200 rounded">Cancelar</button>
+                                                                <button onClick={saveEditedStrategy} className="px-3 py-1 text-xs bg-purple-600 text-white rounded font-bold">Guardar</button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-slate-700 text-sm whitespace-pre-wrap">{strategy.text}</p>
+                                                    )}
+                                                </div>
+                                                
+                                                {/* Botones de acción (visibles en hover o móviles) */}
+                                                {!editingStrategyId && (
+                                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 md:opacity-0 flex gap-1 bg-white shadow-sm border border-slate-200 rounded-md p-1 transition-opacity">
+                                                    <button onClick={() => startEditingStrategy(strategy)} className="p-1.5 text-slate-400 hover:text-blue-500 rounded" title="Editar"><Edit2 className="w-4 h-4"/></button>
+                                                    <button onClick={() => deleteStrategy(strategy.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded" title="Eliminar"><Trash2 className="w-4 h-4"/></button>
+                                                </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SECCIÓN DE ESTADÍSTICAS Y REPORTES */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 
-                                {/* NUEVO BLOQUE DE ESTADÍSTICAS POR MES Y MÉTRICAS DE VALOR */}
+                                {/* BLOQUE DE ESTADÍSTICAS POR MES Y MÉTRICAS DE VALOR */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                                     <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
                                         <BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas de {currentMonthName}
@@ -772,29 +879,72 @@
                                     </div>
                                 </div>
 
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col">
-                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultoría IA</h3>
-                                    <button onClick={generateAIReport} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 transition-colors">
-                                    {isGeneratingReport ? "Analizando..." : "Generar Reporte"}
-                                    </button>
-                                </div>
-                                <div className="p-5 flex-1 overflow-y-auto">
-                                    {!aiReport ? (
-                                    <p className="text-sm text-slate-400 text-center mt-10">Genera un reporte para el diagnóstico de {currentMonthName}.</p>
-                                    ) : (
-                                    <div className="space-y-5">
-                                        <div><p className="text-xs font-bold text-blue-600 uppercase">Tema Principal</p><p className="text-lg font-black text-slate-800">{aiReport.temaPrincipal}</p></div>
-                                        <div><p className="text-xs font-bold text-slate-400 uppercase">Diagnóstico</p><p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">{aiReport.analisisSituacion}</p></div>
+                                {/* ARCHIVERO DE REPORTES IA */}
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full max-h-[500px]">
+                                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl shrink-0">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultorías IA</h3>
+                                        <button onClick={generateAIReport} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-1">
+                                        {isGeneratingReport ? "Analizando..." : <><Plus className="w-3 h-3"/> Nuevo Reporte</>}
+                                        </button>
                                     </div>
-                                    )}
-                                </div>
+                                    <div className="p-3 flex-1 overflow-y-auto space-y-2">
+                                        {aiReports.length === 0 ? (
+                                        <p className="text-sm text-slate-400 text-center mt-10">Aún no hay reportes generados. Genera uno al finalizar el mes.</p>
+                                        ) : (
+                                            aiReports.map((rep, index) => (
+                                                <button key={rep.id} onClick={() => setViewingReport(rep)} className="w-full text-left p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50 transition-all flex items-center gap-3">
+                                                    <div className="bg-white p-2 rounded-lg border border-slate-100 shadow-sm"><FileClock className="w-5 h-5 text-amber-600"/></div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-700 text-sm">{rep.title || `Reporte 0${index + 1}`}</p>
+                                                        <p className="text-xs text-slate-400">{rep.createdAt?.toDate().toLocaleDateString() || 'Generado recientemente'}</p>
+                                                    </div>
+                                                    <ChevronRight className="w-4 h-4 text-slate-300 ml-auto" />
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             </div>
                         )}
                         </div>
                     </main>
+
+                    {/* MODAL PARA VER REPORTE IA */}
+                    {viewingReport && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+                                <div className="p-4 border-b flex justify-between items-center bg-amber-50">
+                                    <h2 className="font-bold text-amber-900 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-600" /> {viewingReport.title || 'Reporte de Consultoría'}</h2>
+                                    <button onClick={() => setViewingReport(null)} className="p-1 hover:bg-amber-100 rounded-lg transition-colors"><X className="w-6 h-6 text-amber-700" /></button>
+                                </div>
+                                <div className="p-6 overflow-y-auto space-y-6">
+                                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                                        <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Tema Principal del Periodo</p>
+                                        <p className="text-lg font-black text-slate-800 leading-tight">{viewingReport.report.temaPrincipal}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Diagnóstico Situacional</p>
+                                        <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed">{viewingReport.report.analisisSituacion}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Propuestas de Mejora</p>
+                                        <ul className="space-y-3">
+                                            {viewingReport.report.propuestas.map((propuesta, idx) => (
+                                                <li key={idx} className="flex gap-3 text-sm text-slate-700">
+                                                    <span className="text-amber-500 mt-0.5"><CheckCircle2 className="w-4 h-4" /></span>
+                                                    <span>{propuesta}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div className="p-4 border-t bg-slate-50 flex justify-end">
+                                    <button onClick={() => setViewingReport(null)} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold">Cerrar Reporte</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* MODAL DE CONTEXTO ESPECÍFICO */}
                     {isContextModalOpen && (
