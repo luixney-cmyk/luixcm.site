@@ -51,7 +51,7 @@
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
         // Se agregaron los iconos Smile, Meh y Frown para los sentimientos, y Edit, Trash, FileClock, Check
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check } from 'lucide-react';
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -179,12 +179,16 @@
             // Estados para el historial de Reportes de IA
             const [aiReports, setAiReports] = useState([]);
             const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-            const [viewingReport, setViewingReport] = useState(null); // Reporte activo para el modal
+            const [viewingReport, setViewingReport] = useState(null);
 
             // Estados para el modal de API Key
             const [isApiModalOpen, setIsApiModalOpen] = useState(false);
             const [tempApiKey, setTempApiKey] = useState("");
             const [pendingAction, setPendingAction] = useState(null);
+
+            // NUEVOS Estados para editar respuestas a comentarios
+            const [editingCommentId, setEditingCommentId] = useState(null);
+            const [editingCommentText, setEditingCommentText] = useState("");
 
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -207,8 +211,8 @@
 
                 const postsRef = collection(db, 'artifacts', appId, 'users', uid, 'posts');
                 const commentsRef = collection(db, 'artifacts', appId, 'users', uid, 'comments');
-                const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); // Nueva colección
-                const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); // Nueva colección
+                const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); 
+                const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); 
 
                 const handleFirestoreError = async (err) => {
                     console.error(err);
@@ -306,6 +310,24 @@
                     setEditingStrategyText("");
                 } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
             };
+
+            // --- EDICIÓN DE RESPUESTAS ---
+            const startEditingComment = (comment) => {
+                setEditingCommentId(comment.id);
+                setEditingCommentText(comment.generatedResponse);
+            };
+
+            const saveEditedResponse = async (commentId) => {
+                if (!editingCommentText.trim()) return;
+                try {
+                    const commentRef = doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId);
+                    await updateDoc(commentRef, { generatedResponse: editingCommentText.trim() });
+                    setEditingCommentId(null);
+                    setEditingCommentText("");
+                } catch (error) {
+                    setErrorMsg("Error al guardar la respuesta editada.");
+                }
+            };
             // ------------------------------
 
             const createNewPost = async () => {
@@ -381,9 +403,7 @@
                     case 'Genérica': default: categoryInstructions = "CATEGORÍA: GENÉRICA. Respuestas amables de rutina ('Totalmente de acuerdo', 'Seguiremos trabajando'). Usa emojis. No te extiendas."; break;
                 }
 
-                // Concatenar todas las estrategias activas
                 const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
-
                 const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST: ${activePost.context}` : "";
                 const globalContext = combinedStrategies ? `\nLÍNEAS DISCURSIVAS / ESTRATEGIAS GLOBALES ACTIVAS (OBLIGATORIAS APLICAR SI EL TEMA SALE A COLACIÓN):\n${combinedStrategies}` : "";
 
@@ -465,14 +485,12 @@
             const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             const currentMonthName = monthNames[currentMonth];
             
-            // Filtrar posteos exclusivos del mes actual
             const monthlyPosts = posts.filter(p => {
                 if (!p.createdAt) return false;
                 const d = p.createdAt.toDate();
                 return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
             });
 
-            // Filtrar comentarios exclusivos del mes actual
             const monthlyComments = comments.filter(c => {
                 if (!c.createdAt) return false;
                 const d = c.createdAt.toDate();
@@ -485,10 +503,9 @@
                 const s = c.sentiment || '';
                 if (s === 'Positivo') sentPos++;
                 else if (s === 'Neutro') sentNeu++;
-                else sentNeg++; // Agrupa 'Reclamo', 'Negativo', 'Hostil'
+                else sentNeg++; 
             });
 
-            // Tono Predominante del mes
             const catCounts = { Familiar: 0, Genérica: 0, Legislativa: 0, Política: 0 };
             monthlyPosts.forEach(p => { if(catCounts[p.category]!==undefined) catCounts[p.category]++; });
             let topCat = "Ninguno";
@@ -497,9 +514,7 @@
                 if (count > maxCount) { maxCount = count; topCat = cat; }
             }
 
-            // Promedio de respuestas por post (Interacción Promedio)
             const avgEngagement = monthlyPosts.length > 0 ? (monthlyComments.length / monthlyPosts.length).toFixed(1) : 0;
-
 
             const runGenerateReport = async (currentApiKey) => {
                 setIsGeneratingReport(true);
@@ -549,7 +564,6 @@
                     const data = await fetchGeminiWithRetry(payload, currentApiKey);
                     const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
                     
-                    // Guardar como un nuevo reporte en el historial
                     await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ai_reports'), {
                         title: `Reporte ${currentMonthName} ${currentYear}`,
                         report: result,
@@ -570,7 +584,7 @@
             };
 
             // VISTAS 
-            if (authLoading) return null; // El loader HTML inicial se encarga de esto
+            if (authLoading) return null; 
 
             if (!user) {
                 return (
@@ -709,7 +723,6 @@
                                     </div>
                                 </div>
 
-                                {/* AQUÍ ESTABA EL ERROR: Referenciábamos a globalStrategy en lugar de strategies */}
                                 {strategies.length > 0 && (
                                     <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-start gap-3">
                                     <Target className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
@@ -745,12 +758,40 @@
                                             </span>
                                             </div>
                                             <div className="bg-slate-50 p-2 rounded border border-slate-100 text-sm text-slate-600 italic">"{comment.originalComment}"</div>
-                                            <div className="text-base text-slate-800">{comment.generatedResponse}</div>
+                                            
+                                            {/* SECCIÓN DE TEXTO (EDICIÓN O VISTA) */}
+                                            {editingCommentId === comment.id ? (
+                                                <textarea
+                                                    value={editingCommentText}
+                                                    onChange={(e) => setEditingCommentText(e.target.value)}
+                                                    className="w-full mt-2 p-3 text-base text-slate-800 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
+                                                />
+                                            ) : (
+                                                <div className="text-base text-slate-800">{comment.generatedResponse}</div>
+                                            )}
                                         </div>
-                                        <div className="p-4 md:w-1/3 bg-slate-50 flex items-center justify-center">
-                                            <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white text-blue-600 border-2 border-blue-100 hover:bg-blue-50'}`}>
-                                            {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> Copiado</> : <><Copy className="w-5 h-5"/> Copiar</>}
-                                            </button>
+
+                                        {/* SECCIÓN DE BOTONES DE ACCIÓN */}
+                                        <div className="p-4 md:w-1/3 bg-slate-50 flex flex-col items-center justify-center gap-2">
+                                            {editingCommentId === comment.id ? (
+                                                <>
+                                                    <button onClick={() => saveEditedResponse(comment.id)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                                                        <Save className="w-5 h-5"/> Guardar
+                                                    </button>
+                                                    <button onClick={() => setEditingCommentId(null)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 transition-colors">
+                                                        Cancelar
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'}`}>
+                                                        {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> Copiado</> : <><Copy className="w-5 h-5"/> Copiar</>}
+                                                    </button>
+                                                    <button onClick={() => startEditingComment(comment)} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 text-sm transition-colors">
+                                                        <Edit2 className="w-4 h-4"/> Editar respuesta
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                         </div>
                                     )
@@ -761,7 +802,7 @@
                             </div>
                         )}
 
-                        {/* VISTA 2: ANÁLISIS Y ESTRATEGIA (RECONSTRUIDA PARA HISTORIALES) */}
+                        {/* VISTA 2: ANÁLISIS Y ESTRATEGIA */}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
                             
