@@ -709,12 +709,17 @@
                                     </div>
                                 </div>
 
-                                {globalStrategy && (
+                                {/* AQUÍ ESTABA EL ERROR: Referenciábamos a globalStrategy en lugar de strategies */}
+                                {strategies.length > 0 && (
                                     <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-start gap-3">
                                     <Target className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="text-xs font-bold text-purple-800 uppercase">Estrategia Global Activa</p>
-                                        <p className="text-sm text-purple-900 mt-1">{globalStrategy}</p>
+                                        <p className="text-xs font-bold text-purple-800 uppercase">Estrategias Globales Activas</p>
+                                        <ul className="text-sm text-purple-900 mt-1 list-disc list-inside">
+                                            {strategies.map((s, i) => (
+                                                <li key={i}>{s.text}</li>
+                                            ))}
+                                        </ul>
                                     </div>
                                     </div>
                                 )}
