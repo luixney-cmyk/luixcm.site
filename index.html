@@ -414,10 +414,18 @@
                     ${postContext}
                     ${globalContext}
                     
-                    Reglas:
-                    1. Extrae nombre del usuario.
-                    2. NUNCA inicies con "Hola [Nombre]". Facebook ya los etiqueta.
-                    3. Analiza el sentimiento del comentario en una de estas 4 opciones estrictamente: 'Positivo', 'Neutro', 'Reclamo' (queja legítima ciudadana), o 'Negativo' (troll, insultos, hostilidad abierta).
+                    REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
+                    1. NUNCA inventes datos, cifras, logros, cargos, denuncias ni hechos. Si no tienes la información exacta en el contexto, no la menciones.
+                    2. NUNCA prometas resolver casos individuales ni gestiones específicas (ej. "Mañana mismo te mandamos ayuda").
+                    3. NUNCA hagas acusaciones directas contra nadie sin evidencia explícita en el contexto provisto.
+                    4. Mantén respuestas de máximo 1-2 frases, salvo que el tono sea explícitamente Legislativo o Político, donde puedes extenderte un poco más.
+                    5. NUNCA inicies con "Hola [Nombre]". Facebook ya los etiqueta. Extrae el nombre de usuario y úsalo con naturalidad en el cuerpo de la respuesta si es necesario, o no lo uses.
+                    6. Analiza el sentimiento del comentario en una de estas 5 opciones ESTRICTAMENTE: 
+                        - 'Positivo'
+                        - 'Neutro'
+                        - 'Reclamo' (queja legítima ciudadana en tono normal)
+                        - 'Negativo' (insulto puro, troll). En estos casos, genera una respuesta muy institucional, genérica o recomienda no responder en el texto generado.
+                        - 'Escalar' (Si el comentario contiene una denuncia grave, amenaza explícita, caso altamente sensible o solicitud de auxilio).
                 `;
 
                 const userPrompt = `PUBLICACIÓN:\n"${activePost.text}"\n\nCOMENTARIOS:\n${newCommentsText}`;
@@ -434,7 +442,7 @@
                             properties: {
                             nombreUsuario: { type: "STRING" },
                             comentarioOriginal: { type: "STRING" },
-                            sentimiento: { type: "STRING", description: "Debe ser: Positivo, Neutro, Reclamo, o Negativo" },
+                            sentimiento: { type: "STRING", description: "Debe ser estrictamente uno de: Positivo, Neutro, Reclamo, Negativo, Escalar" },
                             respuestaGenerada: { type: "STRING" }
                             },
                             required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada"]
@@ -748,12 +756,28 @@
                                 <div className="space-y-4">
                                     {activeComments.map((comment) => {
                                     const isNegative = comment.sentiment === 'Negativo' || comment.sentiment === 'Reclamo' || comment.isHostile;
+                                    const isEscalate = comment.sentiment === 'Escalar';
+                                    
+                                    // Determinamos los colores de borde y fondo del badge según el sentimiento
+                                    let borderColor = 'border-slate-200';
+                                    let badgeColor = 'bg-slate-100 text-slate-600';
+                                    
+                                    if (isEscalate) {
+                                        borderColor = 'border-orange-400 shadow-orange-100';
+                                        badgeColor = 'bg-orange-100 text-orange-800 animate-pulse'; // Llamativo para casos urgentes
+                                    } else if (isNegative) {
+                                        borderColor = 'border-red-300';
+                                        badgeColor = 'bg-red-100 text-red-700';
+                                    } else if (comment.sentiment === 'Positivo') {
+                                        badgeColor = 'bg-green-100 text-green-700';
+                                    }
+
                                     return (
-                                        <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${isNegative ? 'border-red-300' : 'border-slate-200'}`}>
+                                        <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${borderColor} transition-colors`}>
                                         <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3">
                                             <div className="flex justify-between items-start">
                                             <span className="font-bold text-sm flex items-center gap-2"><User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}</span>
-                                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${isNegative ? 'bg-red-100 text-red-700' : comment.sentiment === 'Positivo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${badgeColor}`}>
                                                 {comment.sentiment || (comment.isHostile ? 'Hostil' : 'Neutro')}
                                             </span>
                                             </div>
