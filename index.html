@@ -50,8 +50,8 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Se agregaron los iconos Smile, Meh y Frown para los sentimientos, y Edit, Trash, FileClock, Check
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, PieChart, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save } from 'lucide-react';
+        // Agregamos nuevos iconos para las nuevas funcionalidades
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, ShieldAlert, Ban } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -104,7 +104,6 @@
         // --- CONFIGURACIÓN DE GEMINI ---
         const GEMINI_MODEL = "gemini-2.5-flash";
 
-        // Función ajustada para recibir el apiKey dinámicamente
         const fetchGeminiWithRetry = async (payload, apiKey, retries = 3) => {
             const cleanApiKey = (apiKey || "").trim().replace(/^['"]|['"]$/g, "");
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -147,6 +146,43 @@
             }
         };
 
+        // Helper para extraer categorías manejando retrocompatibilidad ("Genérica" -> "Social")
+        const getPostCategories = (post) => {
+            if (!post) return ["Social"];
+            if (post.categories && Array.isArray(post.categories) && post.categories.length > 0) {
+                return post.categories;
+            }
+            if (post.category) {
+                return post.category === "Genérica" ? ["Social"] : [post.category];
+            }
+            return ["Social"];
+        };
+
+        // Helper para mapear sentimientos viejos a nuevos y obtener colores
+        const getSentimentVisuals = (rawSentiment, isHostile = false) => {
+            let s = rawSentiment || (isHostile ? 'Negativo' : 'Neutro');
+            
+            // Retrocompatibilidad
+            if (s === 'Reclamo') s = 'Reclamo ciudadano';
+            
+            switch (s) {
+                case 'Positivo': 
+                    return { label: s, border: 'border-green-200', bg: 'bg-green-100', text: 'text-green-700', icon: Smile };
+                case 'Neutro': 
+                    return { label: s, border: 'border-slate-200', bg: 'bg-slate-100', text: 'text-slate-600', icon: Meh };
+                case 'Reclamo ciudadano': 
+                    return { label: s, border: 'border-amber-300', bg: 'bg-amber-100', text: 'text-amber-700', icon: MessageSquare };
+                case 'Crítica externa': 
+                    return { label: s, border: 'border-orange-300', bg: 'bg-orange-100', text: 'text-orange-700', icon: AlertTriangle };
+                case 'Negativo': 
+                    return { label: s, border: 'border-red-300', bg: 'bg-red-100', text: 'text-red-700', icon: Frown };
+                case 'Escalar': 
+                    return { label: s, border: 'border-red-500 shadow-sm shadow-red-200', bg: 'bg-red-100', text: 'text-red-900', icon: ShieldAlert, pulse: true };
+                default:
+                    return { label: s, border: 'border-slate-200', bg: 'bg-slate-100', text: 'text-slate-600', icon: Meh };
+            }
+        };
+
         // --- APLICACIÓN PRINCIPAL ---
         function App() {
             const [user, setUser] = useState(null);
@@ -160,9 +196,17 @@
             
             const [isContextModalOpen, setIsContextModalOpen] = useState(false);
             const [tempContextText, setTempContextText] = useState("");
+            const [tempPostInstruction, setTempPostInstruction] = useState("");
             
-            // Estados para el historial de Estrategias
+            // Estados para el historial de Estrategias y Alias
             const [strategies, setStrategies] = useState([]);
+            const [aliases, setAliases] = useState([]);
+            
+            // Modal de Alias
+            const [isAliasModalOpen, setIsAliasModalOpen] = useState(false);
+            const [tempAliasOriginal, setTempAliasOriginal] = useState("");
+            const [tempAliasPreferred, setTempAliasPreferred] = useState("");
+
             const [newStrategyText, setNewStrategyText] = useState("");
             const [isSavingStrategy, setIsSavingStrategy] = useState(false);
             const [editingStrategyId, setEditingStrategyId] = useState(null);
@@ -174,7 +218,10 @@
             const [isGenerating, setIsGenerating] = useState(false);
             const [errorMsg, setErrorMsg] = useState("");
             const [loginError, setLoginError] = useState("");
+            
+            // Ocultamiento temporal y estados
             const [copiedId, setCopiedId] = useState(null);
+            const [hiddenCopiedCommentIds, setHiddenCopiedCommentIds] = useState([]);
             
             // Estados para el historial de Reportes de IA
             const [aiReports, setAiReports] = useState([]);
@@ -186,7 +233,7 @@
             const [tempApiKey, setTempApiKey] = useState("");
             const [pendingAction, setPendingAction] = useState(null);
 
-            // NUEVOS Estados para editar respuestas a comentarios
+            // Estados para editar respuestas a comentarios
             const [editingCommentId, setEditingCommentId] = useState(null);
             const [editingCommentText, setEditingCommentText] = useState("");
 
@@ -213,6 +260,7 @@
                 const commentsRef = collection(db, 'artifacts', appId, 'users', uid, 'comments');
                 const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); 
                 const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); 
+                const aliasesRef = collection(db, 'artifacts', appId, 'users', uid, 'user_aliases'); 
 
                 const handleFirestoreError = async (err) => {
                     console.error(err);
@@ -248,7 +296,12 @@
                     setAiReports(fetchedReports);
                 }, handleFirestoreError);
 
-                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); };
+                const unsubAliases = onSnapshot(aliasesRef, (snap) => {
+                    const fetchedAliases = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setAliases(fetchedAliases);
+                }, handleFirestoreError);
+
+                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); unsubAliases(); };
             }, [user]);
 
             const handleLogin = async () => {
@@ -262,7 +315,7 @@
                     }
                 } catch (error) {
                     console.error(error);
-                    setLoginError("Error al iniciar sesión: " + error.message + " (Asegúrate de permitir las ventanas emergentes en tu navegador)");
+                    setLoginError("Error al iniciar sesión: " + error.message);
                 }
             };
 
@@ -280,18 +333,14 @@
                     setNewStrategyText("");
                     setStrategySuccessMsg("¡Instrucción guardada exitosamente!");
                     setTimeout(() => setStrategySuccessMsg(""), 3000);
-                } catch (err) {
-                    setErrorMsg("Error al guardar la estrategia.");
-                } finally {
-                    setIsSavingStrategy(false);
-                }
+                } catch (err) { setErrorMsg("Error al guardar la estrategia."); } 
+                finally { setIsSavingStrategy(false); }
             };
 
             const deleteStrategy = async (id) => {
                 if(confirm("¿Estás seguro de eliminar esta instrucción?")) {
-                    try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', id));
-                    } catch (err) { setErrorMsg("Error al eliminar la estrategia."); }
+                    try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', id)); } 
+                    catch (err) { setErrorMsg("Error al eliminar la estrategia."); }
                 }
             };
 
@@ -311,7 +360,35 @@
                 } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
             };
 
-            // --- EDICIÓN DE RESPUESTAS ---
+            // --- GESTIÓN DE ALIAS ---
+            const openAliasModal = (originalName) => {
+                const existing = aliases.find(a => a.originalName.toLowerCase() === originalName.toLowerCase());
+                setTempAliasOriginal(originalName);
+                setTempAliasPreferred(existing ? existing.preferredName : "");
+                setIsAliasModalOpen(true);
+            };
+
+            const saveAlias = async () => {
+                if (!tempAliasPreferred.trim()) return;
+                try {
+                    const existing = aliases.find(a => a.originalName.toLowerCase() === tempAliasOriginal.toLowerCase());
+                    if (existing) {
+                        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'user_aliases', existing.id), {
+                            preferredName: tempAliasPreferred.trim(),
+                            updatedAt: serverTimestamp()
+                        });
+                    } else {
+                        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'user_aliases'), {
+                            originalName: tempAliasOriginal.trim(),
+                            preferredName: tempAliasPreferred.trim(),
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                    setIsAliasModalOpen(false);
+                } catch (err) { setErrorMsg("Error al guardar alias."); }
+            };
+
+            // --- EDICIÓN Y ESTADOS DE COMENTARIOS ---
             const startEditingComment = (comment) => {
                 setEditingCommentId(comment.id);
                 setEditingCommentText(comment.generatedResponse);
@@ -320,15 +397,33 @@
             const saveEditedResponse = async (commentId) => {
                 if (!editingCommentText.trim()) return;
                 try {
-                    const commentRef = doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId);
-                    await updateDoc(commentRef, { generatedResponse: editingCommentText.trim() });
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { 
+                        generatedResponse: editingCommentText.trim(),
+                        status: 'editado'
+                    });
                     setEditingCommentId(null);
                     setEditingCommentText("");
-                } catch (error) {
-                    setErrorMsg("Error al guardar la respuesta editada.");
+                } catch (error) { setErrorMsg("Error al guardar la respuesta editada."); }
+            };
+
+            const changeCommentStatus = async (commentId, newStatus) => {
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { 
+                        status: newStatus 
+                    });
+                } catch (error) { console.error("Error cambiando estado:", error); }
+            };
+
+            const handleCopy = (id, text) => {
+                if (copyToClipboard(text)) {
+                    setCopiedId(id);
+                    changeCommentStatus(id, 'copiado');
+                    setTimeout(() => {
+                        setCopiedId(null);
+                        setHiddenCopiedCommentIds(prev => [...new Set([...prev, id])]);
+                    }, 800); // Pequeño delay para ver el check verde antes de ocultar
                 }
             };
-            // ------------------------------
 
             const createNewPost = async () => {
                 if (!newPostText.trim()) return;
@@ -336,7 +431,8 @@
                     const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'posts'), {
                         text: newPostText.trim(),
                         context: "", 
-                        category: "Genérica", 
+                        postInstruction: "",
+                        categories: ["Social"], // Por defecto en Social
                         createdAt: serverTimestamp()
                     });
                     setActivePostId(docRef.id);
@@ -349,23 +445,37 @@
                 const activePost = posts.find(p => p.id === activePostId);
                 if (activePost) {
                     setTempContextText(activePost.context || "");
+                    setTempPostInstruction(activePost.postInstruction || "");
                     setIsContextModalOpen(true);
                 }
             };
 
             const savePostContext = async () => {
                 try {
-                    const postRef = doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePostId);
-                    await updateDoc(postRef, { context: tempContextText });
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePostId), { 
+                        context: tempContextText,
+                        postInstruction: tempPostInstruction
+                    });
                     setIsContextModalOpen(false);
                 } catch (err) { setErrorMsg("Error al guardar el contexto."); }
             };
 
-            const updatePostCategory = async (postId, category) => {
+            const togglePostCategory = async (postId, categoryName, currentCategories) => {
                 try {
-                    const postRef = doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId);
-                    await updateDoc(postRef, { category });
-                } catch (err) { setErrorMsg("Error al actualizar la categoría."); }
+                    let newCategories = [...currentCategories];
+                    if (newCategories.includes(categoryName)) {
+                        newCategories = newCategories.filter(c => c !== categoryName);
+                    } else {
+                        newCategories.push(categoryName);
+                    }
+                    // Regla: mínimo una categoría, si quedan 0, asignar Social por defecto.
+                    if (newCategories.length === 0) newCategories = ["Social"];
+                    
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId), { 
+                        categories: newCategories,
+                        category: null // Limpiamos el viejo campo si existe para forzar transición
+                    });
+                } catch (err) { setErrorMsg("Error al actualizar categorías."); }
             };
 
             const executeWithApiKey = (actionCallback) => {
@@ -373,9 +483,7 @@
                 if (!key) {
                     setPendingAction(() => actionCallback); 
                     setIsApiModalOpen(true);
-                } else {
-                    actionCallback(key);
-                }
+                } else { actionCallback(key); }
             };
 
             const saveApiKeyAndExecute = () => {
@@ -394,41 +502,56 @@
                 setIsGenerating(true);
                 setErrorMsg("");
                 const activePost = posts.find(p => p.id === activePostId);
+                const activeCategories = getPostCategories(activePost);
                 
-                let categoryInstructions = "";
-                switch(activePost.category) {
-                    case 'Familiar': categoryInstructions = "CATEGORÍA: FAMILIAR. Las respuestas deben ser MUY CORTAS (1 a 10 palabras). Usa frases sencillas, cálidas y empáticas. Usa emojis cálidos. CERO política."; break;
-                    case 'Legislativa': categoryInstructions = "CATEGORÍA: LEGISLATIVA. Respuestas más estudiadas y letradas. Utiliza argumentos respaldados en información jurídica o parlamentaria. Profesional y técnico."; break;
-                    case 'Política': categoryInstructions = "CATEGORÍA: POLÍTICA. Tono FUERTE, CONTRASTANTE, FIRME y DIRECTO. Eres la voz de la oposición. Responde con alta política y contundencia, pero SIEMPRE respetuosa."; break;
-                    case 'Genérica': default: categoryInstructions = "CATEGORÍA: GENÉRICA. Respuestas amables de rutina ('Totalmente de acuerdo', 'Seguiremos trabajando'). Usa emojis. No te extiendas."; break;
-                }
+                // Construir instrucciones por categoría dinámicamente
+                let categoryInstructions = activeCategories.map(cat => {
+                    switch(cat) {
+                        case 'Social': return "- SOCIAL: Publicación de cercanía ciudadana, comunidad, territorio, causas sociales o interacción cotidiana. Responder con calidez, claridad y naturalidad. Evitar sonar genérico, vacío o robótico.";
+                        case 'Familiar': return "- FAMILIAR: Respuestas muy cortas, cálidas, humanas y sencillas. Idealmente de 1 a 10 palabras. Puede usar emojis cálidos. Cero confrontación.";
+                        case 'Legislativa': return "- LEGISLATIVA: Responder con seriedad institucional, claridad y sustento. Puede usar lenguaje parlamentario o jurídico sencillo, sin inventar datos. Mantener tono profesional.";
+                        case 'Política': return "- POLÍTICA: Responder con firmeza, contraste y claridad política. Tono directo, de oposición, pero siempre respetuoso. No insultar, no acusar sin evidencia y no inventar datos.";
+                        default: return "";
+                    }
+                }).join('\n');
+
+                const activeAliasesText = aliases.length > 0 
+                    ? `\nMEMORIA DE ALIAS CONOCIDOS:\n${aliases.map(a => `- ${a.originalName} -> Prefiere que lo llamen: ${a.preferredName}`).join('\n')}\n(Usa estos alias de forma natural si el usuario coincide. NO inventes alias, usa solo los de esta lista).` 
+                    : "";
 
                 const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
-                const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST: ${activePost.context}` : "";
-                const globalContext = combinedStrategies ? `\nLÍNEAS DISCURSIVAS / ESTRATEGIAS GLOBALES ACTIVAS (OBLIGATORIAS APLICAR SI EL TEMA SALE A COLACIÓN):\n${combinedStrategies}` : "";
+                
+                const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST:\n${activePost.context}` : "";
+                const postSpecificInstruction = activePost.postInstruction?.trim() ? `\nINSTRUCCIÓN ESPECÍFICA PARA ESTA PUBLICACIÓN (PRIORIDAD ALTA):\n${activePost.postInstruction}` : "";
+                const globalContext = combinedStrategies ? `\nESTRATEGIAS GLOBALES ACTIVAS:\n${combinedStrategies}` : "";
 
                 const systemPrompt = `
-                    Eres el Community Manager de la Senadora Ivideliza Reyes Hernández (Nayarit). 
-                    Perfil: Ex presidenta municipal de La Yesca, ex diputada, Senadora de oposición por 1ra minoría (PAN).
+                    Eres el Community Manager de la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Tu trabajo es redactar respuestas breves, útiles y naturales para comentarios de redes sociales.
+                    
+                    ENFOQUES ACTIVOS DE LA PUBLICACIÓN (Combina estos estilos):
                     ${categoryInstructions}
+                    
                     ${postContext}
+                    ${postSpecificInstruction}
+                    ${activeAliasesText}
                     ${globalContext}
                     
                     REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
-                    1. NUNCA inventes datos, cifras, logros, cargos, denuncias ni hechos. Si no tienes la información exacta en el contexto, no la menciones.
-                    2. NUNCA prometas resolver casos individuales ni gestiones específicas (ej. "Mañana mismo te mandamos ayuda").
-                    3. NUNCA hagas acusaciones directas contra nadie sin evidencia explícita en el contexto provisto.
-                    4. Mantén respuestas de máximo 1-2 frases, salvo que el tono sea explícitamente Legislativo o Político, donde puedes extenderte un poco más.
-                    5. NUNCA inicies con "Hola [Nombre]". Facebook ya los etiqueta. Extrae el nombre de usuario y úsalo con naturalidad en el cuerpo de la respuesta si es necesario, o no lo uses.
-                    6. Analiza el sentimiento del comentario en una de estas 5 opciones ESTRICTAMENTE: 
-                        - 'Positivo'
-                        - 'Neutro'
-                        - 'Reclamo' (queja legítima ciudadana en tono normal)
-                        - 'Negativo' (insulto puro, troll). En estos casos, genera una respuesta muy institucional, genérica o recomienda no responder en el texto generado.
-                        - 'Escalar' (Si el comentario contiene una denuncia grave, amenaza explícita, caso altamente sensible o solicitud de auxilio).
+                    1. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto, no la menciones.
+                    2. No prometas resolver casos individuales ni gestiones específicas.
+                    3. No hagas acusaciones directas sin evidencia explícita en el contexto.
+                    4. Mantén las respuestas de máximo 1 o 2 frases, salvo que el enfoque Legislativo o Político requiera un poco más de desarrollo.
+                    5. No inicies con 'Hola [Nombre]'. Usa el nombre o alias solo si se siente natural en la frase.
+                    6. CLASIFICACIÓN DE SENTIMIENTO OBLIGATORIA (Elige solo una de estas 6):
+                       - 'Positivo': apoyo, felicitación, acuerdo.
+                       - 'Neutro': comentario informativo, simple.
+                       - 'Reclamo ciudadano': queja legítima sobre un problema público, inconformidad ciudadana, sin ataque directo a la senadora. Responde con empatía.
+                       - 'Crítica externa': comentario negativo contra el gobierno, autoridades, partidos u otros actores, pero NO dirigido contra la senadora. (No lo clasifiques como Negativo). Responde con contraste político si aplica.
+                       - 'Negativo': insulto, burla o ataque DIRECTO hacia la senadora, su equipo o su trabajo.
+                       - 'Escalar': denuncia grave, amenaza, solicitud de auxilio, violencia o tema que deba revisar un humano.
                 `;
 
-                const userPrompt = `PUBLICACIÓN:\n"${activePost.text}"\n\nCOMENTARIOS:\n${newCommentsText}`;
+                const userPrompt = `PUBLICACIÓN:\n"${activePost.text}"\n\nCOMENTARIOS A RESPONDER:\n${newCommentsText}`;
 
                 const payload = {
                     contents: [{ parts: [{ text: userPrompt }] }],
@@ -436,17 +559,21 @@
                     generationConfig: {
                         responseMimeType: "application/json",
                         responseSchema: {
-                        type: "ARRAY",
-                        items: {
-                            type: "OBJECT",
-                            properties: {
-                            nombreUsuario: { type: "STRING" },
-                            comentarioOriginal: { type: "STRING" },
-                            sentimiento: { type: "STRING", description: "Debe ser estrictamente uno de: Positivo, Neutro, Reclamo, Negativo, Escalar" },
-                            respuestaGenerada: { type: "STRING" }
-                            },
-                            required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada"]
-                        }
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    nombreUsuario: { type: "STRING" },
+                                    comentarioOriginal: { type: "STRING" },
+                                    sentimiento: { type: "STRING", description: "Opciones: Positivo, Neutro, Reclamo ciudadano, Crítica externa, Negativo, Escalar" },
+                                    razonSentimiento: { type: "STRING", description: "Breve justificación de por qué elegiste este sentimiento" },
+                                    requiereRevision: { type: "BOOLEAN" },
+                                    respuestaGenerada: { type: "STRING" },
+                                    recomendacion: { type: "STRING", description: "Ej: Responder, No responder, Revisar antes, Responder institucional" },
+                                    usarAliasDetectado: { type: "STRING", description: "Si usaste un alias de la lista, indícalo aquí, sino déjalo vacío" }
+                                },
+                                required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada", "recomendacion"]
+                            }
                         }
                     }
                 };
@@ -464,14 +591,19 @@
                             nombreUsuario: item.nombreUsuario || 'Desconocido',
                             originalComment: item.comentarioOriginal,
                             sentiment: item.sentimiento,
+                            sentimentReason: item.razonSentimiento || "",
+                            requiresReview: item.requiereRevision || false,
                             generatedResponse: item.respuestaGenerada,
+                            recommendation: item.recomendacion || "",
+                            usedAlias: item.usarAliasDetectado || "",
+                            status: "pendiente",
                             createdAt: serverTimestamp()
                         });
                     }
                     setNewCommentsText("");
                 } catch (err) {
                     console.error(err);
-                    setErrorMsg("Error al generar respuestas: " + (err.message || "Revisa la API Key y el modelo de Gemini."));
+                    setErrorMsg("Error al generar respuestas: " + (err.message || "Revisa la API Key."));
                 } finally { setIsGenerating(false); }
             };
 
@@ -480,14 +612,7 @@
                 executeWithApiKey(runGenerateResponses);
             };
 
-            const handleCopy = (id, text) => {
-                if (copyToClipboard(text)) {
-                    setCopiedId(id);
-                    setTimeout(() => setCopiedId(null), 2000);
-                }
-            };
-
-            // --- LÓGICA DE FECHAS (CÁLCULOS DEL MES EN CURSO) ---
+            // --- LÓGICA DE FECHAS Y ESTADÍSTICAS ---
             const currentMonth = new Date().getMonth();
             const currentYear = new Date().getFullYear();
             const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -505,17 +630,24 @@
                 return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
             });
 
-            // MÉTRICAS CALCULADAS DEL MES
-            let sentPos = 0, sentNeu = 0, sentNeg = 0;
+            // Contar Sentimientos con la nueva lógica
+            let sentPos = 0, sentNeu = 0, sentRec = 0, sentCrit = 0, sentNeg = 0, sentEsc = 0;
             monthlyComments.forEach(c => {
                 const s = c.sentiment || '';
                 if (s === 'Positivo') sentPos++;
                 else if (s === 'Neutro') sentNeu++;
-                else sentNeg++; 
+                else if (s === 'Reclamo ciudadano' || s === 'Reclamo') sentRec++;
+                else if (s === 'Crítica externa') sentCrit++;
+                else if (s === 'Escalar') sentEsc++;
+                else sentNeg++; // Todo lo que queda hostil o negativo va aquí
             });
 
-            const catCounts = { Familiar: 0, Genérica: 0, Legislativa: 0, Política: 0 };
-            monthlyPosts.forEach(p => { if(catCounts[p.category]!==undefined) catCounts[p.category]++; });
+            // Contar Categorías (Ahora es un array, una publicación suma en varias)
+            const catCounts = { Social: 0, Familiar: 0, Legislativa: 0, Política: 0 };
+            monthlyPosts.forEach(p => { 
+                const cats = getPostCategories(p);
+                cats.forEach(c => { if(catCounts[c] !== undefined) catCounts[c]++; });
+            });
             let topCat = "Ninguno";
             let maxCount = 0;
             for (const [cat, count] of Object.entries(catCounts)) {
@@ -527,30 +659,29 @@
             const runGenerateReport = async (currentApiKey) => {
                 setIsGeneratingReport(true);
                 
-                const catCounts = { Familiar: 0, Genérica: 0, Legislativa: 0, Política: 0 };
-                monthlyPosts.forEach(p => { if(catCounts[p.category]!==undefined) catCounts[p.category]++; });
-                
-                const sentCounts = { Positivo: 0, Neutro: 0, Reclamo: 0, Negativo: 0 };
-                monthlyComments.forEach(c => {
-                    const s = c.sentiment || (c.isHostile ? 'Negativo' : 'Neutro');
-                    if(sentCounts[s]!==undefined) sentCounts[s]++; 
-                });
-
                 const sampleTexts = monthlyPosts.map(p => p.text).join(" | ").substring(0, 3000);
 
                 const prompt = `
                     Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes para el mes de ${currentMonthName} ${currentYear}.
+                    
                     Datos del mes:
                     - Publicaciones totales: ${monthlyPosts.length}
-                    - Desglose por tipo: ${JSON.stringify(catCounts)}
+                    - Desglose por enfoque (una publicación puede tener varios): ${JSON.stringify(catCounts)}
                     - Comentarios totales recibidos: ${monthlyComments.length}
-                    - Desglose de sentimientos: ${JSON.stringify(sentCounts)}
-                    - Muestra de textos publicados: ${sampleTexts}
+                    - Sentimientos (Detalle estratégico):
+                        * Apoyo ciudadano (Positivo): ${sentPos}
+                        * Neutrales: ${sentNeu}
+                        * Reclamos ciudadanos (Atención necesaria): ${sentRec}
+                        * Críticas externas (Al gobierno u otros, no a ella): ${sentCrit}
+                        * Ataques directos a la senadora (Negativos): ${sentNeg}
+                        * Casos delicados (Escalar): ${sentEsc}
+                    
+                    Muestra de textos publicados: ${sampleTexts}
 
-                    Extrae y analiza:
-                    1. Cuál fue el tema más recurrente o importante.
-                    2. Un análisis situacional de 1 párrafo sobre cómo se siente la temperatura ciudadana hacia ella basada en la proporción de comentarios a favor vs reclamos/negativos.
-                    3. 3 propuestas de mejora o consejos prácticos para el equipo de redes.
+                    Extrae y genera un JSON estricto con:
+                    1. "temaPrincipal": Cuál fue el tema más recurrente o importante.
+                    2. "analisisSituacion": Un párrafo sobre la temperatura ciudadana (distinguiendo entre los que se quejan del gobierno y los que atacan a la senadora).
+                    3. "propuestas": Array con 3 propuestas de mejora.
                 `;
 
                 const payload = {
@@ -579,19 +710,11 @@
                         year: currentYear,
                         createdAt: serverTimestamp()
                     });
-                    
-                } catch (err) {
-                    setErrorMsg("Error al generar el reporte de IA: " + (err.message || "Revisa la API Key y el modelo de Gemini."));
-                } finally {
-                    setIsGeneratingReport(false);
-                }
+                } catch (err) { setErrorMsg("Error al generar el reporte de IA."); } 
+                finally { setIsGeneratingReport(false); }
             };
+            const generateAIReport = () => executeWithApiKey(runGenerateReport);
 
-            const generateAIReport = () => {
-                executeWithApiKey(runGenerateReport);
-            };
-
-            // VISTAS 
             if (authLoading) return null; 
 
             if (!user) {
@@ -621,6 +744,7 @@
             }
 
             const activePost = posts.find(p => p.id === activePostId);
+            const activeCategories = getPostCategories(activePost);
             const activeComments = comments.filter(c => c.postId === activePostId);
 
             return (
@@ -630,22 +754,27 @@
                     {isSidebarOpen && <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
                     <aside className={`fixed lg:static inset-y-0 left-0 w-80 bg-white border-r border-slate-200 z-50 transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                         <div className="p-4 border-b border-slate-200 bg-blue-50/50">
-                        <h2 className="text-blue-800 font-bold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Historial</h2>
+                            <h2 className="text-blue-800 font-bold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Historial</h2>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         <button onClick={() => { setActivePostId(null); setCurrentView('manager'); setIsSidebarOpen(false); }} className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed font-medium transition-colors ${!activePostId && currentView === 'manager' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:bg-blue-50'}`}>
                             <Plus className="w-5 h-5" /> Nueva Publicación
                         </button>
                         <div className="pt-4 space-y-2">
-                            {posts.map(post => (
-                            <button key={post.id} onClick={() => { setActivePostId(post.id); setCurrentView('manager'); setIsSidebarOpen(false); }} className={`w-full text-left p-3 rounded-lg border transition-all ${activePostId === post.id && currentView === 'manager' ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
-                                <p className="text-sm line-clamp-2 text-slate-700">{post.text}</p>
-                                <div className="text-[10px] text-slate-400 mt-2 flex justify-between">
-                                <span className="font-semibold text-slate-500">{post.category}</span>
-                                <span>{comments.filter(c => c.postId === post.id).length} resp.</span>
-                                </div>
-                            </button>
-                            ))}
+                            {posts.map(post => {
+                                const postCats = getPostCategories(post);
+                                return (
+                                <button key={post.id} onClick={() => { setActivePostId(post.id); setCurrentView('manager'); setIsSidebarOpen(false); setHiddenCopiedCommentIds([]); }} className={`w-full text-left p-3 rounded-lg border transition-all ${activePostId === post.id && currentView === 'manager' ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                                    <p className="text-sm line-clamp-2 text-slate-700">{post.text}</p>
+                                    <div className="text-[10px] text-slate-400 mt-2 flex justify-between items-center">
+                                    <span className="font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                                        {postCats.join(' · ')}
+                                    </span>
+                                    <span>{comments.filter(c => c.postId === post.id).length} resp.</span>
+                                    </div>
+                                </button>
+                                );
+                            })}
                         </div>
                         </div>
                     </aside>
@@ -673,19 +802,18 @@
                         </div>
                         </header>
 
-                        {/* MOBILE TABS */}
                         <div className="md:hidden flex bg-white border-b border-slate-200 shrink-0">
-                        <button onClick={() => setCurrentView('manager')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'manager' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Gestión</button>
-                        <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'analysis' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
+                            <button onClick={() => setCurrentView('manager')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'manager' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Gestión</button>
+                            <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'analysis' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
                         </div>
 
-                        {errorMsg && <div className="bg-red-50 text-red-600 p-3 text-sm text-center border-b border-red-100 flex justify-center items-center gap-2">
+                        {errorMsg && <div className="bg-red-50 text-red-600 p-3 text-sm text-center border-b border-red-100 flex justify-center items-center gap-2 shrink-0">
                             <AlertTriangle className="w-4 h-4"/> {errorMsg}
                         </div>}
 
                         <div className="flex-1 overflow-y-auto">
                         
-                        {/* VISTA 1: GESTOR */}
+                        {}
                         {currentView === 'manager' && (
                             <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
                             {!activePostId ? (
@@ -696,129 +824,163 @@
                                 </div>
                                 <textarea value={newPostText} onChange={(e) => setNewPostText(e.target.value)} placeholder="Ej: Seguimos trabajando por Nayarit..." className="w-full h-40 p-4 rounded-xl border border-slate-300 focus:border-blue-500 outline-none resize-none text-slate-700" />
                                 <div className="mt-4 flex justify-end">
-                                    <button onClick={createNewPost} disabled={!newPostText.trim()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50">Guardar <ChevronRight className="w-5 h-5" /></button>
+                                    <button onClick={createNewPost} disabled={!newPostText.trim()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50">Guardar y Continuar <ChevronRight className="w-5 h-5" /></button>
                                 </div>
                                 </div>
                             ) : (
                                 <div className="space-y-6">
+                                
+                                {/* CAJA DE PUBLICACIÓN Y CONFIGURACIÓN */}
                                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl"></div>
                                     <div className="flex justify-between items-start mb-2">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Publicación Original</h3>
-                                    <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200">
-                                        <Settings className="w-3 h-3" /> {activePost?.context ? 'Contexto Activo' : '+ Contexto Específico'}
-                                    </button>
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Publicación Original</h3>
+                                        <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200">
+                                            <Settings className="w-3 h-3" /> {(activePost?.context || activePost?.postInstruction) ? 'Contexto Configurado' : '+ Añadir Contexto'}
+                                        </button>
                                     </div>
                                     <p className="text-slate-600 text-sm whitespace-pre-wrap">{activePost?.text}</p>
                                     
                                     <div className="mt-5 border-t border-slate-100 pt-4">
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tono de Respuestas (Categoría)</p>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                        {[
-                                        { name: 'Familiar', icon: Users, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-200' },
-                                        { name: 'Genérica', icon: FileText, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
-                                        { name: 'Legislativa', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200' },
-                                        { name: 'Política', icon: Megaphone, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' }
-                                        ].map(cat => {
-                                        const isActive = (activePost?.category || 'Genérica') === cat.name;
-                                        return (
-                                            <button key={cat.name} onClick={() => updatePostCategory(activePost.id, cat.name)} className={`p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 border-2 transition-all ${isActive ? `${cat.bg} ${cat.color} ${cat.border} shadow-sm scale-105` : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
-                                            <cat.icon className="w-4 h-4" /> {cat.name}
-                                            </button>
-                                        );
-                                        })}
-                                    </div>
+                                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Enfoques activos para responder (Selección múltiple)</p>
+                                        <p className="text-[10px] text-slate-400 mb-3">Selecciona los tonos que debe combinar la IA al generar respuestas.</p>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                            {[
+                                            { name: 'Social', icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-300' },
+                                            { name: 'Familiar', icon: Smile, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-300' },
+                                            { name: 'Legislativa', icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-300' },
+                                            { name: 'Política', icon: Megaphone, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-300' }
+                                            ].map(cat => {
+                                            const isActive = activeCategories.includes(cat.name);
+                                            return (
+                                                <button key={cat.name} onClick={() => togglePostCategory(activePost.id, cat.name, activeCategories)} className={`p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 border-2 transition-all ${isActive ? `${cat.bg} ${cat.color} ${cat.border} shadow-sm scale-105` : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+                                                    <cat.icon className="w-4 h-4" /> {cat.name}
+                                                </button>
+                                            );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
 
-                                {strategies.length > 0 && (
-                                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-start gap-3">
-                                    <Target className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-xs font-bold text-purple-800 uppercase">Estrategias Globales Activas</p>
-                                        <ul className="text-sm text-purple-900 mt-1 list-disc list-inside">
-                                            {strategies.map((s, i) => (
-                                                <li key={i}>{s.text}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                    </div>
-                                )}
-
+                                {/* CAJA DE GENERACIÓN */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                                    <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios de Facebook</h3>
-                                    <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega los comentarios copiados..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
+                                    <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios a responder</h3>
+                                    <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega aquí los comentarios copiados de Facebook..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
                                     <button onClick={handleGenerateResponses} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold">
-                                    {isGenerating ? "Redactando..." : <><Send className="w-5 h-5" /> Generar Respuestas</>}
+                                    {isGenerating ? "Analizando y Redactando..." : <><Send className="w-5 h-5" /> Generar Respuestas</>}
                                     </button>
                                 </div>
 
+                                {/* LISTA DE COMENTARIOS */}
                                 <div className="space-y-4">
+                                    {/* Botón para mostrar ocultos si los hay */}
+                                    {hiddenCopiedCommentIds.length > 0 && (
+                                        <div className="flex justify-center">
+                                            <button onClick={() => setHiddenCopiedCommentIds([])} className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors">
+                                                <Eye className="w-4 h-4"/> Restaurar {hiddenCopiedCommentIds.length} respuestas copiadas/ocultas
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {activeComments.map((comment) => {
-                                    const isNegative = comment.sentiment === 'Negativo' || comment.sentiment === 'Reclamo' || comment.isHostile;
-                                    const isEscalate = comment.sentiment === 'Escalar';
-                                    
-                                    // Determinamos los colores de borde y fondo del badge según el sentimiento
-                                    let borderColor = 'border-slate-200';
-                                    let badgeColor = 'bg-slate-100 text-slate-600';
-                                    
-                                    if (isEscalate) {
-                                        borderColor = 'border-orange-400 shadow-orange-100';
-                                        badgeColor = 'bg-orange-100 text-orange-800 animate-pulse'; // Llamativo para casos urgentes
-                                    } else if (isNegative) {
-                                        borderColor = 'border-red-300';
-                                        badgeColor = 'bg-red-100 text-red-700';
-                                    } else if (comment.sentiment === 'Positivo') {
-                                        badgeColor = 'bg-green-100 text-green-700';
-                                    }
+                                        const isHidden = hiddenCopiedCommentIds.includes(comment.id);
+                                        const isNoResponder = comment.status === 'no_responder';
+                                        
+                                        // Visuales de Sentimiento
+                                        const vis = getSentimentVisuals(comment.sentiment, comment.isHostile);
 
-                                    return (
-                                        <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${borderColor} transition-colors`}>
-                                        <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3">
-                                            <div className="flex justify-between items-start">
-                                            <span className="font-bold text-sm flex items-center gap-2"><User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}</span>
-                                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md ${badgeColor}`}>
-                                                {comment.sentiment || (comment.isHostile ? 'Hostil' : 'Neutro')}
-                                            </span>
+                                        // Si está oculto temporalmente
+                                        if (isHidden) {
+                                            return (
+                                                <div key={comment.id} className="bg-green-50 border border-green-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-green-100 transition-colors" onClick={() => setHiddenCopiedCommentIds(prev => prev.filter(id => id !== comment.id))}>
+                                                    <div className="flex items-center gap-2 text-green-700 font-medium">
+                                                        <CheckCircle2 className="w-4 h-4"/> Copiado
+                                                        <span className="text-green-900 font-bold ml-2">{comment.nombreUsuario}</span>
+                                                    </div>
+                                                    <span className="text-xs text-green-600 bg-green-200 px-2 py-1 rounded">Mostrar</span>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${vis.border} transition-all ${isNoResponder ? 'opacity-50 grayscale' : ''}`}>
+                                                
+                                                {/* IZQUIERDA: Comentario Original y Generación */}
+                                                <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3 relative">
+                                                    
+                                                    {/* Cabecera del comentario */}
+                                                    <div className="flex flex-wrap justify-between items-start gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-sm flex items-center gap-1 text-slate-800">
+                                                                <User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}
+                                                            </span>
+                                                            {/* Botón Guardar Alias */}
+                                                            <button onClick={() => openAliasModal(comment.nombreUsuario)} className="text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 flex items-center gap-1 transition-colors" title="Personalizar nombre">
+                                                                <UserPlus className="w-3 h-3"/> Alias
+                                                            </button>
+                                                        </div>
+                                                        <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md flex items-center gap-1 ${vis.bg} ${vis.text} ${vis.pulse ? 'animate-pulse' : ''}`}>
+                                                            <vis.icon className="w-3 h-3"/> {vis.label}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Detalles IA y Comentario Original */}
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
+                                                        <p className="text-slate-700 italic mb-2">"{comment.originalComment}"</p>
+                                                        {(comment.sentimentReason || comment.recommendation || comment.requiresReview) && (
+                                                            <div className="mt-2 pt-2 border-t border-slate-200 text-[11px] flex flex-col gap-1">
+                                                                {comment.sentimentReason && <p className="text-slate-500"><span className="font-bold text-slate-600">Por qué:</span> {comment.sentimentReason}</p>}
+                                                                {comment.recommendation && <p className="text-blue-600"><span className="font-bold">Sugerencia IA:</span> {comment.recommendation}</p>}
+                                                                {comment.requiresReview && <p className="text-red-600 font-bold flex items-center gap-1"><ShieldAlert className="w-3 h-3"/> Requiere revisión antes de enviar.</p>}
+                                                                {comment.usedAlias && <p className="text-purple-600 font-bold">Usó alias: {comment.usedAlias}</p>}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* SECCIÓN DE TEXTO (EDICIÓN O VISTA) */}
+                                                    {editingCommentId === comment.id ? (
+                                                        <textarea
+                                                            value={editingCommentText}
+                                                            onChange={(e) => setEditingCommentText(e.target.value)}
+                                                            className="w-full mt-2 p-3 text-base text-slate-800 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
+                                                        />
+                                                    ) : (
+                                                        <div className="text-base text-slate-800 mt-2 font-medium bg-white p-3 rounded-xl border border-slate-100 shadow-inner">
+                                                            {comment.generatedResponse}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* DERECHA: BOTONES DE ACCIÓN */}
+                                                <div className="p-4 md:w-1/3 bg-slate-50 flex flex-col justify-center gap-2">
+                                                    {editingCommentId === comment.id ? (
+                                                        <>
+                                                            <button onClick={() => saveEditedResponse(comment.id)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm">
+                                                                <Save className="w-5 h-5"/> Guardar
+                                                            </button>
+                                                            <button onClick={() => setEditingCommentId(null)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 transition-colors">
+                                                                Cancelar
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50'}`}>
+                                                                {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> ¡Copiado!</> : <><Copy className="w-5 h-5"/> Copiar Respuesta</>}
+                                                            </button>
+                                                            
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => startEditingComment(comment)} className="flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 text-xs transition-colors">
+                                                                    <Edit2 className="w-4 h-4"/> Editar
+                                                                </button>
+                                                                <button onClick={() => changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder')} className={`flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
+                                                                    <Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar'}
+                                                                </button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="bg-slate-50 p-2 rounded border border-slate-100 text-sm text-slate-600 italic">"{comment.originalComment}"</div>
-                                            
-                                            {/* SECCIÓN DE TEXTO (EDICIÓN O VISTA) */}
-                                            {editingCommentId === comment.id ? (
-                                                <textarea
-                                                    value={editingCommentText}
-                                                    onChange={(e) => setEditingCommentText(e.target.value)}
-                                                    className="w-full mt-2 p-3 text-base text-slate-800 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
-                                                />
-                                            ) : (
-                                                <div className="text-base text-slate-800">{comment.generatedResponse}</div>
-                                            )}
-                                        </div>
-
-                                        {/* SECCIÓN DE BOTONES DE ACCIÓN */}
-                                        <div className="p-4 md:w-1/3 bg-slate-50 flex flex-col items-center justify-center gap-2">
-                                            {editingCommentId === comment.id ? (
-                                                <>
-                                                    <button onClick={() => saveEditedResponse(comment.id)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                                                        <Save className="w-5 h-5"/> Guardar
-                                                    </button>
-                                                    <button onClick={() => setEditingCommentId(null)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 transition-colors">
-                                                        Cancelar
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'}`}>
-                                                        {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> Copiado</> : <><Copy className="w-5 h-5"/> Copiar</>}
-                                                    </button>
-                                                    <button onClick={() => startEditingComment(comment)} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 text-sm transition-colors">
-                                                        <Edit2 className="w-4 h-4"/> Editar respuesta
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                        </div>
-                                    )
+                                        )
                                     })}
                                 </div>
                                 </div>
@@ -826,20 +988,21 @@
                             </div>
                         )}
 
-                        {/* VISTA 2: ANÁLISIS Y ESTRATEGIA */}
+                        {}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
                             
-                            {/* CAJA DE NUEVA ESTRATEGIA */}
+                            {/* CAJA DE NUEVA ESTRATEGIA GLOBAL */}
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
                                 <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
                                 <Target className="w-6 h-6 text-purple-700" />
                                 <div>
-                                    <h2 className="font-bold text-purple-900 text-lg">Nueva Instrucción / Línea Discursiva</h2>
+                                    <h2 className="font-bold text-purple-900 text-lg">Estrategia Global (Aplica a todo)</h2>
+                                    <p className="text-xs text-purple-700">Líneas discursivas que Gemini considerará en todas las respuestas.</p>
                                 </div>
                                 </div>
                                 <div className="p-5">
-                                <textarea value={newStrategyText} onChange={(e) => setNewStrategyText(e.target.value)} placeholder="Ej: Siempre contestar en primera persona..." className="w-full h-20 p-4 rounded-xl border border-slate-300 focus:border-purple-500 outline-none resize-none text-slate-700" />
+                                <textarea value={newStrategyText} onChange={(e) => setNewStrategyText(e.target.value)} placeholder="Ej: Siempre hablar de los foros ciudadanos..." className="w-full h-20 p-4 rounded-xl border border-slate-300 focus:border-purple-500 outline-none resize-none text-slate-700" />
                                 
                                 <div className="mt-3 flex justify-between items-center">
                                     <div className="text-sm font-medium text-green-600 flex items-center gap-1 min-h-[24px]">
@@ -876,7 +1039,6 @@
                                                     )}
                                                 </div>
                                                 
-                                                {/* Botones de acción (visibles en hover o móviles) */}
                                                 {!editingStrategyId && (
                                                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 md:opacity-0 flex gap-1 bg-white shadow-sm border border-slate-200 rounded-md p-1 transition-opacity">
                                                     <button onClick={() => startEditingStrategy(strategy)} className="p-1.5 text-slate-400 hover:text-blue-500 rounded" title="Editar"><Edit2 className="w-4 h-4"/></button>
@@ -907,50 +1069,50 @@
                                         <div className="bg-slate-50 rounded-xl p-4 text-center border border-slate-200 flex flex-col items-center justify-center">
                                             <MessageCircle className="w-5 h-5 text-slate-400 mb-1" />
                                             <p className="text-3xl font-black text-slate-700">{monthlyComments.length}</p>
-                                            <p className="text-[10px] font-bold text-slate-600 uppercase mt-1">Comentarios</p>
+                                            <p className="text-[10px] font-bold text-slate-600 uppercase mt-1">Comentarios Analizados</p>
                                         </div>
                                     </div>
 
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Sentimiento Ciudadano</p>
+                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 border-b pb-1">Desglose de Sentimientos</p>
                                     <div className="grid grid-cols-3 gap-3 mb-5">
-                                        <div className="bg-emerald-50 rounded-xl p-3 flex flex-col items-center border border-emerald-100">
-                                            <Smile className="w-5 h-5 text-emerald-500 mb-1" />
-                                            <p className="text-xl font-black text-emerald-600">{sentPos}</p>
-                                            <p className="text-[9px] font-bold text-emerald-700 uppercase mt-1">Positivos</p>
+                                        <div className="bg-green-50 rounded-xl p-3 flex flex-col items-center border border-green-100">
+                                            <p className="text-xl font-black text-green-600">{sentPos}</p>
+                                            <p className="text-[9px] font-bold text-green-700 uppercase mt-1 text-center leading-tight">Positivo</p>
                                         </div>
                                         <div className="bg-slate-50 rounded-xl p-3 flex flex-col items-center border border-slate-200">
-                                            <Meh className="w-5 h-5 text-slate-400 mb-1" />
                                             <p className="text-xl font-black text-slate-600">{sentNeu}</p>
-                                            <p className="text-[9px] font-bold text-slate-600 uppercase mt-1">Neutrales</p>
+                                            <p className="text-[9px] font-bold text-slate-600 uppercase mt-1 text-center leading-tight">Neutro</p>
                                         </div>
-                                        <div className="bg-rose-50 rounded-xl p-3 flex flex-col items-center border border-rose-100">
-                                            <Frown className="w-5 h-5 text-rose-500 mb-1" />
-                                            <p className="text-xl font-black text-rose-600">{sentNeg}</p>
-                                            <p className="text-[9px] font-bold text-rose-700 uppercase mt-1">Negativos</p>
+                                        <div className="bg-amber-50 rounded-xl p-3 flex flex-col items-center border border-amber-100">
+                                            <p className="text-xl font-black text-amber-600">{sentRec}</p>
+                                            <p className="text-[9px] font-bold text-amber-700 uppercase mt-1 text-center leading-tight">Reclamo</p>
+                                        </div>
+                                        <div className="bg-orange-50 rounded-xl p-3 flex flex-col items-center border border-orange-100">
+                                            <p className="text-xl font-black text-orange-600">{sentCrit}</p>
+                                            <p className="text-[9px] font-bold text-orange-700 uppercase mt-1 text-center leading-tight">Crítica Externa</p>
+                                        </div>
+                                        <div className="bg-red-50 rounded-xl p-3 flex flex-col items-center border border-red-100">
+                                            <p className="text-xl font-black text-red-600">{sentNeg}</p>
+                                            <p className="text-[9px] font-bold text-red-700 uppercase mt-1 text-center leading-tight">Negativo / Ataque</p>
+                                        </div>
+                                        <div className="bg-red-100 rounded-xl p-3 flex flex-col items-center border border-red-300">
+                                            <p className="text-xl font-black text-red-800">{sentEsc}</p>
+                                            <p className="text-[9px] font-bold text-red-900 uppercase mt-1 text-center leading-tight">Escalar</p>
                                         </div>
                                     </div>
 
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Métricas de Valor</p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100 flex items-center justify-between">
-                                            <div>
-                                                <p className="text-[10px] font-bold text-indigo-500 uppercase">Tono Predominante</p>
-                                                <p className="text-sm font-bold text-indigo-700">{topCat}</p>
-                                            </div>
-                                            <Megaphone className="w-5 h-5 text-indigo-300" />
+                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Enfoque Predominante</p>
+                                    <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-indigo-500 uppercase">Más usado</p>
+                                            <p className="text-sm font-bold text-indigo-700">{topCat}</p>
                                         </div>
-                                        <div className="bg-amber-50 rounded-xl p-3 border border-amber-100 flex items-center justify-between">
-                                            <div>
-                                                <p className="text-[10px] font-bold text-amber-500 uppercase">Interacción Prom.</p>
-                                                <p className="text-sm font-bold text-amber-700">{avgEngagement} <span className="text-[10px]">resp/post</span></p>
-                                            </div>
-                                            <TrendingUp className="w-5 h-5 text-amber-300" />
-                                        </div>
+                                        <Megaphone className="w-5 h-5 text-indigo-300" />
                                     </div>
                                 </div>
 
                                 {/* ARCHIVERO DE REPORTES IA */}
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full max-h-[500px]">
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full max-h-[600px]">
                                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl shrink-0">
                                         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultorías IA</h3>
                                         <button onClick={generateAIReport} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-1">
@@ -980,6 +1142,8 @@
                         </div>
                     </main>
 
+                    {}
+                    
                     {/* MODAL PARA VER REPORTE IA */}
                     {viewingReport && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -991,16 +1155,16 @@
                                 <div className="p-6 overflow-y-auto space-y-6">
                                     <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                                         <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Tema Principal del Periodo</p>
-                                        <p className="text-lg font-black text-slate-800 leading-tight">{viewingReport.report.temaPrincipal}</p>
+                                        <p className="text-lg font-black text-slate-800 leading-tight">{viewingReport.report?.temaPrincipal}</p>
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Diagnóstico Situacional</p>
-                                        <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed">{viewingReport.report.analisisSituacion}</p>
+                                        <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed">{viewingReport.report?.analisisSituacion}</p>
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Propuestas de Mejora</p>
                                         <ul className="space-y-3">
-                                            {viewingReport.report.propuestas.map((propuesta, idx) => (
+                                            {viewingReport.report?.propuestas?.map((propuesta, idx) => (
                                                 <li key={idx} className="flex gap-3 text-sm text-slate-700">
                                                     <span className="text-amber-500 mt-0.5"><CheckCircle2 className="w-4 h-4" /></span>
                                                     <span>{propuesta}</span>
@@ -1016,20 +1180,64 @@
                         </div>
                     )}
 
-                    {/* MODAL DE CONTEXTO ESPECÍFICO */}
+                    {/* MODAL DE CONTEXTO E INSTRUCCIÓN ESPECÍFICA */}
                     {isContextModalOpen && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
-                            <div className="p-4 border-b flex justify-between bg-slate-50">
-                            <h2 className="font-bold flex items-center gap-2"><Settings className="w-5 h-5 text-slate-500" /> Contexto Específico</h2>
-                            <button onClick={() => setIsContextModalOpen(false)}><X className="w-6 h-6 text-slate-400" /></button>
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="p-4 border-b flex justify-between bg-slate-50 shrink-0">
+                            <h2 className="font-bold flex items-center gap-2"><Settings className="w-5 h-5 text-slate-500" /> Configuración de la Publicación</h2>
+                            <button onClick={() => setIsContextModalOpen(false)}><X className="w-6 h-6 text-slate-400 hover:text-slate-700" /></button>
                             </div>
-                            <div className="p-6">
-                            <textarea value={tempContextText} onChange={(e) => setTempContextText(e.target.value)} placeholder="Contexto para este post en particular..." className="w-full h-32 p-4 rounded-xl border border-slate-300 outline-none resize-none" />
+                            
+                            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Contexto Específico (Antecedentes)</label>
+                                    <p className="text-[10px] text-slate-500 mb-2">Información de qué trata el post, datos importantes que la IA deba saber para responder.</p>
+                                    <textarea value={tempContextText} onChange={(e) => setTempContextText(e.target.value)} placeholder="Ej: Se entregaron 500 apoyos en la colonia Centro..." className="w-full h-24 p-3 rounded-xl border border-slate-300 outline-none resize-none text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-blue-700 mb-1">Instrucción Temporal para Respuestas</label>
+                                    <p className="text-[10px] text-slate-500 mb-2">Una instrucción que SOLO aplique a este post (no se guardará como global).</p>
+                                    <textarea value={tempPostInstruction} onChange={(e) => setTempPostInstruction(e.target.value)} placeholder="Ej: Agradecer reclamos ciudadanos y llevar respuesta hacia soluciones..." className="w-full h-24 p-3 rounded-xl border border-blue-300 outline-none resize-none text-sm bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+                                </div>
+                            </div>
+
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 shrink-0">
+                            <button onClick={() => setIsContextModalOpen(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg">Cancelar</button>
+                            <button onClick={savePostContext} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-sm">Guardar Configuración</button>
+                            </div>
+                        </div>
+                        </div>
+                    )}
+
+                    {/* MODAL PARA GUARDAR ALIAS */}
+                    {isAliasModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+                            <div className="p-4 border-b flex justify-between bg-blue-50">
+                                <h2 className="font-bold flex items-center gap-2 text-blue-800"><UserPlus className="w-5 h-5 text-blue-600" /> Memoria de Nombres</h2>
+                                <button onClick={() => setIsAliasModalOpen(false)}><X className="w-5 h-5 text-blue-400 hover:text-blue-700" /></button>
+                            </div>
+                            <div className="p-5">
+                                <div className="mb-4">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase">Nombre en Facebook:</label>
+                                    <p className="text-slate-800 font-medium bg-slate-50 p-2 rounded border mt-1">{tempAliasOriginal}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-blue-600 uppercase">¿Cómo prefiere que le llamen?</label>
+                                    <input 
+                                        type="text" 
+                                        value={tempAliasPreferred}
+                                        onChange={(e) => setTempAliasPreferred(e.target.value)}
+                                        placeholder="Ej: Pakin, Lic. José..."
+                                        className="w-full mt-1 p-3 border-2 border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 text-slate-800"
+                                    />
+                                    <p className="text-[10px] text-slate-500 mt-2">La IA recordará este alias en el futuro de forma automática al detectar a este usuario.</p>
+                                </div>
                             </div>
                             <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setIsContextModalOpen(false)} className="px-4 py-2 text-slate-600">Cancelar</button>
-                            <button onClick={savePostContext} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold">Guardar</button>
+                                <button onClick={() => setIsAliasModalOpen(false)} className="px-4 py-2 text-slate-600 text-sm font-medium">Cancelar</button>
+                                <button onClick={saveAlias} disabled={!tempAliasPreferred.trim()} className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">Guardar Alias</button>
                             </div>
                         </div>
                         </div>
