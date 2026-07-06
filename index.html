@@ -1120,23 +1120,6 @@
                         {}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-                            
-                            {/* NUEVO: GENERADOR DE BORRADORES */}
-                            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl shadow-md overflow-hidden text-white">
-                                <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                                    <div className="flex items-center gap-4">
-                                        <div className="bg-white/20 p-3 rounded-full"><Sparkles className="w-8 h-8 text-blue-100" /></div>
-                                        <div>
-                                            <h2 className="font-bold text-xl">Generador de Publicaciones</h2>
-                                            <p className="text-blue-100 text-sm">La IA analizará tus reportes y tendencias para sugerirte contenido.</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={generateDrafts} disabled={isGeneratingDrafts} className="bg-white text-blue-700 hover:bg-blue-50 font-bold px-6 py-3 rounded-xl shadow flex items-center gap-2 transition-colors disabled:opacity-50 whitespace-nowrap">
-                                        {isGeneratingDrafts ? "Redactando..." : <><Sparkles className="w-5 h-5"/> Sugerir 3 Publicaciones</>}
-                                    </button>
-                                </div>
-                            </div>
-
                             {/* CAJA DE NUEVA ESTRATEGIA GLOBAL */}
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
                                 <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
