@@ -50,8 +50,8 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Agregamos nuevos iconos para las nuevas funcionalidades y las herramientas maestras
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Star, Sparkles, Trash } from 'lucide-react';
+        // Añadimos RefreshCw para el botón de Regenerar
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Star, Sparkles, Trash, RefreshCw } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -146,7 +146,6 @@
             }
         };
 
-        // Helper para extraer categorías manejando retrocompatibilidad ("Genérica" -> "Social")
         const getPostCategories = (post) => {
             if (!post) return ["Social"];
             if (post.categories && Array.isArray(post.categories) && post.categories.length > 0) {
@@ -158,28 +157,18 @@
             return ["Social"];
         };
 
-        // Helper para mapear sentimientos viejos a nuevos y obtener colores
         const getSentimentVisuals = (rawSentiment, isHostile = false) => {
             let s = rawSentiment || (isHostile ? 'Negativo' : 'Neutro');
-            
-            // Retrocompatibilidad
             if (s === 'Reclamo') s = 'Reclamo ciudadano';
             
             switch (s) {
-                case 'Positivo': 
-                    return { label: s, border: 'border-green-200', bg: 'bg-green-100', text: 'text-green-700', icon: Smile };
-                case 'Neutro': 
-                    return { label: s, border: 'border-slate-200', bg: 'bg-slate-100', text: 'text-slate-600', icon: Meh };
-                case 'Reclamo ciudadano': 
-                    return { label: s, border: 'border-amber-300', bg: 'bg-amber-100', text: 'text-amber-700', icon: MessageSquare };
-                case 'Crítica externa': 
-                    return { label: s, border: 'border-orange-300', bg: 'bg-orange-100', text: 'text-orange-700', icon: AlertTriangle };
-                case 'Negativo': 
-                    return { label: s, border: 'border-red-300', bg: 'bg-red-100', text: 'text-red-700', icon: Frown };
-                case 'Escalar': 
-                    return { label: s, border: 'border-red-500 shadow-sm shadow-red-200', bg: 'bg-red-100', text: 'text-red-900', icon: ShieldAlert, pulse: true };
-                default:
-                    return { label: s, border: 'border-slate-200', bg: 'bg-slate-100', text: 'text-slate-600', icon: Meh };
+                case 'Positivo': return { label: s, border: 'border-green-200', bg: 'bg-green-100', text: 'text-green-700', icon: Smile };
+                case 'Neutro': return { label: s, border: 'border-slate-200', bg: 'bg-slate-100', text: 'text-slate-600', icon: Meh };
+                case 'Reclamo ciudadano': return { label: s, border: 'border-amber-300', bg: 'bg-amber-100', text: 'text-amber-700', icon: MessageSquare };
+                case 'Crítica externa': return { label: s, border: 'border-orange-300', bg: 'bg-orange-100', text: 'text-orange-700', icon: AlertTriangle };
+                case 'Negativo': return { label: s, border: 'border-red-300', bg: 'bg-red-100', text: 'text-red-700', icon: Frown };
+                case 'Escalar': return { label: s, border: 'border-red-500 shadow-sm shadow-red-200', bg: 'bg-red-100', text: 'text-red-900', icon: ShieldAlert, pulse: true };
+                default: return { label: s, border: 'border-slate-200', bg: 'bg-slate-100', text: 'text-slate-600', icon: Meh };
             }
         };
 
@@ -198,21 +187,17 @@
             const [tempContextText, setTempContextText] = useState("");
             const [tempPostInstruction, setTempPostInstruction] = useState("");
             
-            // Estados para el historial de Estrategias y Alias
             const [strategies, setStrategies] = useState([]);
             const [aliases, setAliases] = useState([]);
-            const [goldenResponses, setGoldenResponses] = useState([]); // NUEVO: Ejemplos Estrella
+            const [goldenResponses, setGoldenResponses] = useState([]); 
             
-            // Modal de Configuración y Purgado (NUEVO)
             const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
             const [isPurging, setIsPurging] = useState(false);
 
-            // Modal de Borradores (NUEVO)
             const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
             const [draftsList, setDraftsList] = useState([]);
             const [isGeneratingDrafts, setIsGeneratingDrafts] = useState(false);
 
-            // Modal de Alias
             const [isAliasModalOpen, setIsAliasModalOpen] = useState(false);
             const [tempAliasOriginal, setTempAliasOriginal] = useState("");
             const [tempAliasPreferred, setTempAliasPreferred] = useState("");
@@ -229,23 +214,24 @@
             const [errorMsg, setErrorMsg] = useState("");
             const [loginError, setLoginError] = useState("");
             
-            // Ocultamiento temporal y estados
             const [copiedId, setCopiedId] = useState(null);
             const [revealedCopiedCommentIds, setRevealedCopiedCommentIds] = useState([]);
             
-            // Estados para el historial de Reportes de IA
             const [aiReports, setAiReports] = useState([]);
             const [isGeneratingReport, setIsGeneratingReport] = useState(false);
             const [viewingReport, setViewingReport] = useState(null);
 
-            // Estados para el modal de API Key
             const [isApiModalOpen, setIsApiModalOpen] = useState(false);
             const [tempApiKey, setTempApiKey] = useState("");
             const [pendingAction, setPendingAction] = useState(null);
 
-            // Estados para editar respuestas a comentarios
             const [editingCommentId, setEditingCommentId] = useState(null);
             const [editingCommentText, setEditingCommentText] = useState("");
+
+            // NUEVOS ESTADOS PARA REGENERAR RESPUESTAS ESPECÍFICAS
+            const [regeneratingCommentId, setRegeneratingCommentId] = useState(null);
+            const [regenerateInstruction, setRegenerateInstruction] = useState("");
+            const [isRegeneratingSingle, setIsRegeneratingSingle] = useState(false);
 
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -271,7 +257,7 @@
                 const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); 
                 const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); 
                 const aliasesRef = collection(db, 'artifacts', appId, 'users', uid, 'user_aliases'); 
-                const goldenRef = collection(db, 'artifacts', appId, 'users', uid, 'golden_responses'); // NUEVO
+                const goldenRef = collection(db, 'artifacts', appId, 'users', uid, 'golden_responses'); 
 
                 const handleFirestoreError = async (err) => {
                     console.error(err);
@@ -338,7 +324,6 @@
 
             const handleLogout = () => { signOut(auth); };
 
-            // --- EJEMPLOS DE ORO (Few-Shot) ---
             const saveGoldenResponse = async (comment) => {
                 try {
                     await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'golden_responses'), {
@@ -355,7 +340,6 @@
                 catch (err) { setErrorMsg("Error al eliminar respuesta de oro."); }
             };
 
-            // --- PURGADO DE DATOS VIEJOS ---
             const purgeOldData = async () => {
                 if(!confirm("¿Estás seguro de eliminar todos los posts y comentarios de hace más de 3 meses? Esto reducirá tus lecturas en Firebase y no se puede deshacer.")) return;
                 setIsPurging(true);
@@ -374,7 +358,6 @@
                 finally { setIsPurging(false); }
             };
 
-            // --- GESTIÓN DE ESTRATEGIAS ---
             const saveNewStrategy = async () => {
                 if (!newStrategyText.trim()) return;
                 setIsSavingStrategy(true);
@@ -413,7 +396,6 @@
                 } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
             };
 
-            // --- GESTIÓN DE ALIAS ---
             const openAliasModal = (originalName) => {
                 const existing = aliases.find(a => a.originalName.toLowerCase() === originalName.toLowerCase());
                 setTempAliasOriginal(originalName);
@@ -441,7 +423,6 @@
                 } catch (err) { setErrorMsg("Error al guardar alias."); }
             };
 
-            // --- EDICIÓN Y ESTADOS DE COMENTARIOS ---
             const startEditingComment = (comment) => {
                 setEditingCommentId(comment.id);
                 setEditingCommentText(comment.generatedResponse);
@@ -474,7 +455,7 @@
                         setCopiedId(null);
                         changeCommentStatus(id, 'copiado');
                         setRevealedCopiedCommentIds(prev => prev.filter(cId => cId !== id));
-                    }, 800); // Pequeño delay para ver el check verde antes de ocultar
+                    }, 800);
                 }
             };
 
@@ -485,7 +466,7 @@
                         text: newPostText.trim(),
                         context: "", 
                         postInstruction: "",
-                        categories: ["Social"], // Por defecto en Social
+                        categories: ["Social"], 
                         createdAt: serverTimestamp()
                     });
                     setActivePostId(docRef.id);
@@ -521,12 +502,11 @@
                     } else {
                         newCategories.push(categoryName);
                     }
-                    // Regla: mínimo una categoría, si quedan 0, asignar Social por defecto.
                     if (newCategories.length === 0) newCategories = ["Social"];
                     
                     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId), { 
                         categories: newCategories,
-                        category: null // Limpiamos el viejo campo si existe para forzar transición
+                        category: null 
                     });
                 } catch (err) { setErrorMsg("Error al actualizar categorías."); }
             };
@@ -557,7 +537,6 @@
                 const activePost = posts.find(p => p.id === activePostId);
                 const activeCategories = getPostCategories(activePost);
                 
-                // Construir instrucciones por categoría dinámicamente
                 let categoryInstructions = activeCategories.map(cat => {
                     switch(cat) {
                         case 'Social': return "- SOCIAL: Publicación de cercanía ciudadana, comunidad, territorio, causas sociales o interacción cotidiana. Responder con calidez, claridad y naturalidad. Evitar sonar genérico, vacío o robótico.";
@@ -670,10 +649,89 @@
                 executeWithApiKey(runGenerateResponses);
             };
 
-            // --- LÓGICA DE BORRADORES (NUEVO) ---
+            // --- NUEVO: LÓGICA DE REGENERACIÓN ESPECÍFICA ---
+            const runRegenerateSingleResponse = async (currentApiKey) => {
+                if (!regeneratingCommentId || !regenerateInstruction.trim()) return;
+                setIsRegeneratingSingle(true);
+                setErrorMsg("");
+
+                const commentToUpdate = comments.find(c => c.id === regeneratingCommentId);
+                const activePost = posts.find(p => p.id === commentToUpdate.postId);
+                
+                const systemPrompt = `
+                    Eres el Community Manager de la Senadora Ivideliza Reyes Hernández.
+                    Tu tarea ahora es REESCRIBIR una respuesta a un comentario de Facebook.
+                    Al usuario no le gustó la respuesta anterior generada por IA y ha proporcionado una INSTRUCCIÓN ESPECÍFICA para mejorarla.
+                    
+                    REGLAS:
+                    1. DEBES obedecer la instrucción específica proporcionada por el usuario.
+                    2. Mantén el tono general de un CM profesional, cercano y político (salvo que la instrucción diga lo contrario).
+                    3. No inventes datos que no se te proporcionen.
+                `;
+
+                const userPrompt = `
+                    PUBLICACIÓN ORIGINAL (Contexto):
+                    "${activePost.text}"
+
+                    COMENTARIO DEL CIUDADANO (${commentToUpdate.nombreUsuario}):
+                    "${commentToUpdate.originalComment}"
+
+                    RESPUESTA GENERADA ANTERIORMENTE (La que hay que mejorar):
+                    "${commentToUpdate.generatedResponse}"
+
+                    -------------------------------------
+                    INSTRUCCIÓN ESPECÍFICA DE MEJORA:
+                    "${regenerateInstruction}"
+                    -------------------------------------
+
+                    Redacta UNA nueva respuesta mejorada aplicando fielmente la instrucción específica.
+                `;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userPrompt }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                nuevaRespuesta: { type: "STRING", description: "La nueva respuesta reescrita basándose en la instrucción." }
+                            },
+                            required: ["nuevaRespuesta"]
+                        }
+                    }
+                };
+
+                try {
+                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
+                    const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) throw new Error("Error al comunicarse con Gemini.");
+                    
+                    const result = JSON.parse(jsonText);
+                    
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', regeneratingCommentId), { 
+                        generatedResponse: result.nuevaRespuesta,
+                        status: 'editado' // Marcamos como editado para saber que fue modificada
+                    });
+                    
+                    // Limpiar y cerrar modal
+                    setRegeneratingCommentId(null);
+                    setRegenerateInstruction("");
+                } catch (err) {
+                    console.error(err);
+                    setErrorMsg("Error al regenerar la respuesta: " + (err.message || "Intenta nuevamente."));
+                } finally { 
+                    setIsRegeneratingSingle(false); 
+                }
+            };
+
+            const handleRegenerateExecute = () => {
+                executeWithApiKey(runRegenerateSingleResponse);
+            };
+
             const runGenerateDrafts = async (currentApiKey) => {
                 setIsGeneratingDrafts(true);
-                const latestReport = aiReports[0]; // Tomar el reporte más reciente
+                const latestReport = aiReports[0]; 
                 
                 const prompt = `
                     Actúa como Consultor Político y Copywriter para la Senadora Ivideliza Reyes.
@@ -714,7 +772,6 @@
             };
             const generateDrafts = () => executeWithApiKey(runGenerateDrafts);
 
-            // --- LÓGICA DE FECHAS Y ESTADÍSTICAS ---
             const currentMonth = new Date().getMonth();
             const currentYear = new Date().getFullYear();
             const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -732,7 +789,6 @@
                 return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
             });
 
-            // Contar Sentimientos con la nueva lógica
             let sentPos = 0, sentNeu = 0, sentRec = 0, sentCrit = 0, sentNeg = 0, sentEsc = 0;
             monthlyComments.forEach(c => {
                 const s = c.sentiment || '';
@@ -741,10 +797,9 @@
                 else if (s === 'Reclamo ciudadano' || s === 'Reclamo') sentRec++;
                 else if (s === 'Crítica externa') sentCrit++;
                 else if (s === 'Escalar') sentEsc++;
-                else sentNeg++; // Todo lo que queda hostil o negativo va aquí
+                else sentNeg++; 
             });
 
-            // Contar Categorías (Ahora es un array, una publicación suma en varias)
             const catCounts = { Social: 0, Familiar: 0, Legislativa: 0, Política: 0 };
             monthlyPosts.forEach(p => { 
                 const cats = getPostCategories(p);
@@ -848,6 +903,7 @@
             const activePost = posts.find(p => p.id === activePostId);
             const activeCategories = getPostCategories(activePost);
             const activeComments = comments.filter(c => c.postId === activePostId);
+            const commentBeingRegenerated = comments.find(c => c.id === regeneratingCommentId);
 
             return (
                 <div className="flex h-screen overflow-hidden relative bg-slate-50 z-10">
@@ -897,7 +953,6 @@
                         </div>
                         <div className="flex items-center gap-4">
                             <h1 className="text-lg font-bold text-slate-800 hidden md:block">Sen. Ivideliza Reyes</h1>
-                            {/* NUEVO: Botón de Configuración y Mantenimiento */}
                             <button onClick={() => setIsSettingsModalOpen(true)} className="text-slate-400 hover:text-blue-600 p-2 rounded-md transition-colors bg-slate-100 hover:bg-blue-50" title="Configuración y Mantenimiento">
                                 <Settings className="w-5 h-5"/>
                             </button>
@@ -919,7 +974,6 @@
 
                         <div className="flex-1 overflow-y-auto">
                         
-                        {}
                         {currentView === 'manager' && (
                             <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
                             {!activePostId ? (
@@ -936,7 +990,6 @@
                             ) : (
                                 <div className="space-y-6">
                                 
-                                {/* CAJA DE PUBLICACIÓN Y CONFIGURACIÓN */}
                                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative">
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl"></div>
                                     <div className="flex justify-between items-start mb-2">
@@ -968,7 +1021,6 @@
                                     </div>
                                 </div>
 
-                                {/* CAJA DE GENERACIÓN */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                                     <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios a responder</h3>
                                     <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega aquí los comentarios copiados de Facebook..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
@@ -977,9 +1029,8 @@
                                     </button>
                                 </div>
 
-                                {/* LISTA DE COMENTARIOS */}
+                                {}
                                 <div className="space-y-4">
-                                    {/* Botones para mostrar/ocultar comentarios copiados */}
                                     {(() => {
                                         const copiedComments = activeComments.filter(c => c.status === 'copiado');
                                         const minimizedComments = copiedComments.filter(c => !revealedCopiedCommentIds.includes(c.id));
@@ -1009,10 +1060,8 @@
                                         const isHidden = isCopiado && !isRevealed;
                                         const isNoResponder = comment.status === 'no_responder';
                                         
-                                        // Visuales de Sentimiento
                                         const vis = getSentimentVisuals(comment.sentiment, comment.isHostile);
 
-                                        // Si está oculto temporalmente (minimizado)
                                         if (isHidden) {
                                             return (
                                                 <div key={comment.id} className="bg-green-50 border border-green-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-green-100 transition-colors" onClick={() => setRevealedCopiedCommentIds(prev => [...prev, comment.id])}>
@@ -1028,16 +1077,13 @@
                                         return (
                                             <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${vis.border} transition-all ${isNoResponder ? 'opacity-50 grayscale' : ''}`}>
                                                 
-                                                {/* IZQUIERDA: Comentario Original y Generación */}
                                                 <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3 relative">
                                                     
-                                                    {/* Cabecera del comentario */}
                                                     <div className="flex flex-wrap justify-between items-start gap-2">
                                                         <div className="flex items-center gap-2">
                                                             <span className="font-bold text-sm flex items-center gap-1 text-slate-800">
                                                                 <User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}
                                                             </span>
-                                                            {/* Botón Guardar Alias */}
                                                             <button onClick={() => openAliasModal(comment.nombreUsuario)} className="text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 flex items-center gap-1 transition-colors" title="Personalizar nombre">
                                                                 <UserPlus className="w-3 h-3"/> Alias
                                                             </button>
@@ -1047,7 +1093,6 @@
                                                         </span>
                                                     </div>
 
-                                                    {/* Detalles IA y Comentario Original */}
                                                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
                                                         <p className="text-slate-700 italic mb-2">"{comment.originalComment}"</p>
                                                         {(comment.sentimentReason || comment.recommendation || comment.requiresReview) && (
@@ -1060,7 +1105,6 @@
                                                         )}
                                                     </div>
                                                     
-                                                    {/* SECCIÓN DE TEXTO (EDICIÓN O VISTA) */}
                                                     {editingCommentId === comment.id ? (
                                                         <textarea
                                                             value={editingCommentText}
@@ -1074,7 +1118,6 @@
                                                     )}
                                                 </div>
 
-                                                {/* DERECHA: BOTONES DE ACCIÓN */}
                                                 <div className="p-4 md:w-1/3 bg-slate-50 flex flex-col justify-center gap-2">
                                                     {editingCommentId === comment.id ? (
                                                         <>
@@ -1091,15 +1134,20 @@
                                                                 {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> ¡Copiado!</> : <><Copy className="w-5 h-5"/> Copiar Respuesta</>}
                                                             </button>
                                                             
-                                                            <div className="flex gap-2">
-                                                                <button onClick={() => startEditingComment(comment)} className="flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 text-xs transition-colors">
+                                                            {/* NUEVO LAYOUT DE BOTONES: Editar, Regenerar, Ignorar */}
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <button onClick={() => startEditingComment(comment)} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 text-xs transition-colors">
                                                                     <Edit2 className="w-4 h-4"/> Editar
                                                                 </button>
-                                                                <button onClick={() => changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder')} className={`flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
-                                                                    <Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar'}
+                                                                {/* NUEVO BOTÓN: Regenerar */}
+                                                                <button onClick={() => { setRegeneratingCommentId(comment.id); setRegenerateInstruction(""); }} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-purple-600 border border-purple-200 hover:bg-purple-50 text-xs transition-colors" title="Dar instrucciones para reescribir esta respuesta">
+                                                                    <RefreshCw className="w-4 h-4"/> Repensar
                                                                 </button>
                                                             </div>
-                                                            {/* BOTÓN ORO FEW-SHOT */}
+                                                            <button onClick={() => changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder')} className={`w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
+                                                                <Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar Comentario'}
+                                                            </button>
+
                                                             {!isNoResponder && (
                                                                 <button onClick={() => saveGoldenResponse(comment)} className="w-full py-2 mt-1 rounded-xl font-bold flex items-center justify-center gap-1 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 text-xs transition-colors" title="Guardar como Ejemplo de Oro">
                                                                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-500"/> Respuesta Estrella
@@ -1120,7 +1168,6 @@
                         {}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-                            {/* CAJA DE NUEVA ESTRATEGIA GLOBAL */}
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
                                 <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
                                 <Target className="w-6 h-6 text-purple-700" />
@@ -1143,7 +1190,6 @@
                                 </div>
                             </div>
 
-                            {/* HISTORIAL DE ESTRATEGIAS ACTIVAS */}
                             {strategies.length > 0 && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                     <div className="bg-slate-50 p-3 border-b border-slate-100">
@@ -1179,10 +1225,8 @@
                                 </div>
                             )}
 
-                            {/* SECCIÓN DE ESTADÍSTICAS Y REPORTES */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 
-                                {/* BLOQUE DE ESTADÍSTICAS POR MES Y MÉTRICAS DE VALOR */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                                     <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
                                         <BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas de {currentMonthName}
@@ -1239,7 +1283,6 @@
                                     </div>
                                 </div>
 
-                                {/* ARCHIVERO DE REPORTES IA */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full max-h-[600px]">
                                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl shrink-0">
                                         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultorías IA</h3>
@@ -1270,6 +1313,7 @@
                         </div>
                     </main>
 
+                    {}
                     {/* MODAL PARA VER REPORTE IA */}
                     {viewingReport && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -1306,7 +1350,7 @@
                         </div>
                     )}
 
-                    {/* MODAL CONFIGURACIONES Y PURGADO (NUEVO) */}
+                    {/* MODAL CONFIGURACIONES Y PURGADO */}
                     {isSettingsModalOpen && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -1316,7 +1360,6 @@
                             </div>
                             
                             <div className="p-6 overflow-y-auto flex-1 space-y-8">
-                                {/* SECCIÓN PURGADO */}
                                 <div className="border border-red-200 rounded-xl overflow-hidden">
                                     <div className="bg-red-50 p-4 border-b border-red-200 flex items-center gap-3">
                                         <Trash className="w-5 h-5 text-red-600"/>
@@ -1335,7 +1378,6 @@
                                     </div>
                                 </div>
 
-                                {/* SECCIÓN FEW SHOT LEARNING */}
                                 <div>
                                     <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-3"><Star className="w-5 h-5 text-yellow-500 fill-yellow-400"/> Memoria de Estilo (Respuestas Oro)</h3>
                                     <p className="text-sm text-slate-500 mb-4">Estas son las respuestas perfectas que la IA usa como ejemplo para aprender tu estilo de redacción.</p>
@@ -1365,7 +1407,7 @@
                         </div>
                     )}
 
-                    {/* MODAL BORRADORES GENERADOS (NUEVO) */}
+                    {/* MODAL BORRADORES GENERADOS */}
                     {isDraftModalOpen && (
                         <div className="fixed inset-0 bg-black/60 z-[55] flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[90vh] animate-in zoom-in duration-200">
@@ -1394,7 +1436,7 @@
                         </div>
                     )}
 
-                    {/* MODAL DE CONTEXTO E INSTRUCCIÓN ESPECÍFICA */}
+                    {/* MODAL DE CONTEXTO E INSTRUCCIÓN ESPECÍFICA (POST) */}
                     {isContextModalOpen && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -1483,6 +1525,58 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {}
+                    {/* NUEVO: MODAL PARA REGENERAR RESPUESTA ESPECÍFICA */}
+                    {regeneratingCommentId && commentBeingRegenerated && (
+                        <div className="fixed inset-0 bg-black/60 z-[55] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-purple-200">
+                            <div className="p-4 border-b flex justify-between bg-purple-50 shrink-0">
+                                <div>
+                                    <h2 className="font-bold flex items-center gap-2 text-purple-900"><RefreshCw className="w-5 h-5 text-purple-600" /> Repensar Respuesta</h2>
+                                    <p className="text-xs text-purple-700 mt-1">Dale instrucciones a la IA para mejorar esta respuesta.</p>
+                                </div>
+                                <button onClick={() => { setRegeneratingCommentId(null); setRegenerateInstruction(""); }} disabled={isRegeneratingSingle}><X className="w-6 h-6 text-purple-400 hover:text-purple-700" /></button>
+                            </div>
+                            
+                            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                                {/* Contexto del Comentario */}
+                                <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Comentario original de {commentBeingRegenerated.nombreUsuario}:</p>
+                                    <p className="text-slate-700 italic">"{commentBeingRegenerated.originalComment}"</p>
+                                    
+                                    <div className="mt-3 pt-3 border-t border-slate-200">
+                                        <p className="text-[10px] font-bold text-red-400 uppercase mb-1">Lo que dijo la IA (Versión actual):</p>
+                                        <p className="text-slate-600 bg-white p-2 rounded border border-slate-100">"{commentBeingRegenerated.generatedResponse}"</p>
+                                    </div>
+                                </div>
+
+                                {/* Campo para la instrucción */}
+                                <div>
+                                    <label className="block text-sm font-bold text-purple-700 mb-2">¿Cómo quieres que sea la nueva respuesta?</label>
+                                    <textarea 
+                                        value={regenerateInstruction} 
+                                        onChange={(e) => setRegenerateInstruction(e.target.value)} 
+                                        placeholder="Ej: Hazla más amable, agrega que este usuario es líder vecinal, menciona que el evento es mañana a las 5pm..." 
+                                        className="w-full h-28 p-3 rounded-xl border-2 border-purple-200 outline-none resize-none text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-100" 
+                                        disabled={isRegeneratingSingle}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 shrink-0">
+                                <button onClick={() => { setRegeneratingCommentId(null); setRegenerateInstruction(""); }} disabled={isRegeneratingSingle} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg disabled:opacity-50">Cancelar</button>
+                                <button 
+                                    onClick={handleRegenerateExecute} 
+                                    disabled={!regenerateInstruction.trim() || isRegeneratingSingle} 
+                                    className="px-6 py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 shadow-sm disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isRegeneratingSingle ? <><RefreshCw className="w-4 h-4 animate-spin"/> Pensando...</> : "Generar nueva versión"}
+                                </button>
+                            </div>
+                        </div>
                         </div>
                     )}
                 </div>
