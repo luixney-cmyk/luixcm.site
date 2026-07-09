@@ -50,7 +50,6 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Añadimos RefreshCw para el botón de Regenerar
         import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Star, Sparkles, Trash, RefreshCw } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
@@ -104,11 +103,13 @@
         // --- CONFIGURACIÓN DE GEMINI ---
         const GEMINI_MODEL = "gemini-2.5-flash";
 
-        const fetchGeminiWithRetry = async (payload, apiKey, retries = 3) => {
+        // VERSIÓN MEJORADA: Maneja mejor el error 429 de límite de cuota esperando más tiempo.
+        const fetchGeminiWithRetry = async (payload, apiKey, retries = 4) => {
             const cleanApiKey = (apiKey || "").trim().replace(/^['"]|['"]$/g, "");
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
             let attempt = 0;
-            const backoff = [1000, 2500, 5000];
+            // Se amplían los tiempos de espera: 2s, 5s, 10s, 18s (Total: 35s de margen de tolerancia)
+            const backoff = [2000, 5000, 10000, 18000];
 
             while (attempt < retries) {
                 try {
@@ -131,15 +132,26 @@
                         if (response.status === 400) throw new Error(`Solicitud inválida a Gemini${detail}`);
                         if (response.status === 401 || response.status === 403) throw new Error(`API Key rechazada o sin permisos para Gemini${detail}`);
                         if (response.status === 404) throw new Error(`Modelo no encontrado o apagado: ${GEMINI_MODEL}${detail}`);
-                        if (response.status === 429) throw new Error(`Límite de uso/cuota alcanzado${detail}`);
+                        // Modificado para capturar el 429 como reintentable
+                        if (response.status === 429) throw new Error(`429_QUOTA_EXCEEDED${detail}`);
                         throw new Error(`Error Gemini ${response.status}${detail}`);
                     }
 
                     return await response.json();
                 } catch (error) {
                     const msg = String(error?.message || error);
-                    const retryable = msg.includes('429') || msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504') || msg.includes('Failed to fetch');
-                    if (!retryable || attempt === retries - 1) throw error;
+                    // Verificamos si es un error por límite de cuota (429) u otro error de red temporal
+                    const retryable = msg.includes('429_QUOTA_EXCEEDED') || msg.includes('429') || msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504') || msg.includes('Failed to fetch');
+                    
+                    if (!retryable || attempt === retries - 1) {
+                        // Si ya es el último intento y sigue siendo 429, mostramos un error más limpio
+                        if (msg.includes('429') || msg.includes('QUOTA')) {
+                            throw new Error("Límite gratuito de peticiones alcanzado. Por favor, espera 1 minuto e inténtalo de nuevo.");
+                        }
+                        throw error;
+                    }
+                    
+                    console.warn(`Límite de API alcanzado (intento ${attempt + 1}). Esperando ${backoff[attempt]/1000} segundos para reconectar...`);
                     await delay(backoff[attempt]);
                     attempt++;
                 }
@@ -216,6 +228,7 @@
             
             const [copiedId, setCopiedId] = useState(null);
             const [revealedCopiedCommentIds, setRevealedCopiedCommentIds] = useState([]);
+            const [revealedIgnoredCommentIds, setRevealedIgnoredCommentIds] = useState([]);
             
             const [aiReports, setAiReports] = useState([]);
             const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -228,7 +241,6 @@
             const [editingCommentId, setEditingCommentId] = useState(null);
             const [editingCommentText, setEditingCommentText] = useState("");
 
-            // NUEVOS ESTADOS PARA REGENERAR RESPUESTAS ESPECÍFICAS
             const [regeneratingCommentId, setRegeneratingCommentId] = useState(null);
             const [regenerateInstruction, setRegenerateInstruction] = useState("");
             const [isRegeneratingSingle, setIsRegeneratingSingle] = useState(false);
@@ -475,6 +487,31 @@
                 } catch (err) { setErrorMsg("Error al crear la publicación."); }
             };
 
+            // NUEVA FUNCIÓN: Eliminar Post y sus comentarios asociados
+            const deletePost = async (postId, e) => {
+                if (e) e.stopPropagation();
+                if (!confirm("¿Estás seguro de eliminar esta publicación y todas sus respuestas? Esta acción no se puede deshacer.")) return;
+                
+                try {
+                    // Primero, encontrar y borrar todos los comentarios asociados a este post
+                    const associatedComments = comments.filter(c => c.postId === postId);
+                    for (const c of associatedComments) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
+                    }
+                    
+                    // Segundo, borrar el post
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId));
+                    
+                    // Si el post eliminado es el que teníamos abierto, lo cerramos
+                    if (activePostId === postId) {
+                        setActivePostId(null);
+                        setCurrentView('manager');
+                    }
+                } catch (err) {
+                    setErrorMsg("Error al eliminar la publicación.");
+                }
+            };
+
             const openContextModal = () => {
                 const activePost = posts.find(p => p.id === activePostId);
                 if (activePost) {
@@ -649,7 +686,6 @@
                 executeWithApiKey(runGenerateResponses);
             };
 
-            // --- NUEVO: LÓGICA DE REGENERACIÓN ESPECÍFICA ---
             const runRegenerateSingleResponse = async (currentApiKey) => {
                 if (!regeneratingCommentId || !regenerateInstruction.trim()) return;
                 setIsRegeneratingSingle(true);
@@ -711,10 +747,9 @@
                     
                     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', regeneratingCommentId), { 
                         generatedResponse: result.nuevaRespuesta,
-                        status: 'editado' // Marcamos como editado para saber que fue modificada
+                        status: 'editado' 
                     });
                     
-                    // Limpiar y cerrar modal
                     setRegeneratingCommentId(null);
                     setRegenerateInstruction("");
                 } catch (err) {
@@ -915,22 +950,32 @@
                             <h2 className="text-blue-800 font-bold text-lg flex items-center gap-2"><History className="w-5 h-5" /> Historial</h2>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                        <button onClick={() => { setActivePostId(null); setCurrentView('manager'); setIsSidebarOpen(false); setRevealedCopiedCommentIds([]); }} className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed font-medium transition-colors ${!activePostId && currentView === 'manager' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:bg-blue-50'}`}>
+                        <button onClick={() => { setActivePostId(null); setCurrentView('manager'); setIsSidebarOpen(false); setRevealedCopiedCommentIds([]); setRevealedIgnoredCommentIds([]); }} className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed font-medium transition-colors ${!activePostId && currentView === 'manager' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:bg-blue-50'}`}>
                             <Plus className="w-5 h-5" /> Nueva Publicación
                         </button>
                         <div className="pt-4 space-y-2">
                             {posts.map(post => {
                                 const postCats = getPostCategories(post);
                                 return (
-                                <button key={post.id} onClick={() => { setActivePostId(post.id); setCurrentView('manager'); setIsSidebarOpen(false); setRevealedCopiedCommentIds([]); }} className={`w-full text-left p-3 rounded-lg border transition-all ${activePostId === post.id && currentView === 'manager' ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
-                                    <p className="text-sm line-clamp-2 text-slate-700">{post.text}</p>
-                                    <div className="text-[10px] text-slate-400 mt-2 flex justify-between items-center">
-                                    <span className="font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">
-                                        {postCats.join(' · ')}
-                                    </span>
-                                    <span>{comments.filter(c => c.postId === post.id).length} resp.</span>
+                                <div key={post.id} className={`w-full text-left p-3 rounded-lg border transition-all relative group cursor-pointer ${activePostId === post.id && currentView === 'manager' ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                                    <div onClick={() => { setActivePostId(post.id); setCurrentView('manager'); setIsSidebarOpen(false); setRevealedCopiedCommentIds([]); setRevealedIgnoredCommentIds([]); }}>
+                                        <p className="text-sm line-clamp-2 text-slate-700 pr-6">{post.text}</p>
+                                        <div className="text-[10px] text-slate-400 mt-2 flex justify-between items-center">
+                                        <span className="font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                                            {postCats.join(' · ')}
+                                        </span>
+                                        <span>{comments.filter(c => c.postId === post.id).length} resp.</span>
+                                        </div>
                                     </div>
-                                </button>
+                                    
+                                    <button 
+                                        onClick={(e) => deletePost(post.id, e)}
+                                        className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100"
+                                        title="Eliminar publicación"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
                                 );
                             })}
                         </div>
@@ -994,9 +1039,14 @@
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl"></div>
                                     <div className="flex justify-between items-start mb-2">
                                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Publicación Original</h3>
-                                        <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200">
-                                            <Settings className="w-3 h-3" /> {(activePost?.context || activePost?.postInstruction) ? 'Contexto Configurado' : '+ Añadir Contexto'}
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={(e) => deletePost(activePost.id, e)} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-red-200 transition-colors" title="Eliminar publicación">
+                                                <Trash2 className="w-3 h-3" /> Eliminar
+                                            </button>
+                                            <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200 transition-colors">
+                                                <Settings className="w-3 h-3" /> {(activePost?.context || activePost?.postInstruction) ? 'Contexto Configurado' : '+ Añadir Contexto'}
+                                            </button>
+                                        </div>
                                     </div>
                                     <p className="text-slate-600 text-sm whitespace-pre-wrap">{activePost?.text}</p>
                                     
@@ -1029,25 +1079,39 @@
                                     </button>
                                 </div>
 
-                                {}
                                 <div className="space-y-4">
                                     {(() => {
                                         const copiedComments = activeComments.filter(c => c.status === 'copiado');
                                         const minimizedComments = copiedComments.filter(c => !revealedCopiedCommentIds.includes(c.id));
                                         const revealedComments = copiedComments.filter(c => revealedCopiedCommentIds.includes(c.id));
                                         
-                                        if (copiedComments.length === 0) return null;
+                                        const ignoredComments = activeComments.filter(c => c.status === 'no_responder');
+                                        const minimizedIgnored = ignoredComments.filter(c => !revealedIgnoredCommentIds.includes(c.id));
+                                        const revealedIgnored = ignoredComments.filter(c => revealedIgnoredCommentIds.includes(c.id));
+                                        
+                                        if (copiedComments.length === 0 && ignoredComments.length === 0) return null;
                                         
                                         return (
-                                            <div className="flex justify-center gap-3">
+                                            <div className="flex flex-wrap justify-center gap-3">
                                                 {minimizedComments.length > 0 && (
                                                     <button onClick={() => setRevealedCopiedCommentIds(copiedComments.map(c => c.id))} className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors shadow-sm">
-                                                        <Eye className="w-4 h-4"/> Mostrar {minimizedComments.length} respuestas ocultas
+                                                        <Eye className="w-4 h-4"/> Mostrar {minimizedComments.length} copiadas
                                                     </button>
                                                 )}
                                                 {revealedComments.length > 0 && (
                                                     <button onClick={() => setRevealedCopiedCommentIds([])} className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors border border-green-200 shadow-sm">
-                                                        <EyeOff className="w-4 h-4"/> Ocultar {revealedComments.length} respuestas copiadas
+                                                        <EyeOff className="w-4 h-4"/> Ocultar copiadas
+                                                    </button>
+                                                )}
+
+                                                {minimizedIgnored.length > 0 && (
+                                                    <button onClick={() => setRevealedIgnoredCommentIds(ignoredComments.map(c => c.id))} className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors shadow-sm">
+                                                        <Eye className="w-4 h-4"/> Mostrar {minimizedIgnored.length} ignoradas
+                                                    </button>
+                                                )}
+                                                {revealedIgnored.length > 0 && (
+                                                    <button onClick={() => setRevealedIgnoredCommentIds([])} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors border border-slate-200 shadow-sm">
+                                                        <EyeOff className="w-4 h-4"/> Ocultar ignoradas
                                                     </button>
                                                 )}
                                             </div>
@@ -1058,8 +1122,11 @@
                                         const isCopiado = comment.status === 'copiado';
                                         const isRevealed = revealedCopiedCommentIds.includes(comment.id);
                                         const isHidden = isCopiado && !isRevealed;
-                                        const isNoResponder = comment.status === 'no_responder';
                                         
+                                        const isNoResponder = comment.status === 'no_responder';
+                                        const isRevealedIgnored = revealedIgnoredCommentIds.includes(comment.id);
+                                        const isHiddenIgnored = isNoResponder && !isRevealedIgnored;
+
                                         const vis = getSentimentVisuals(comment.sentiment, comment.isHostile);
 
                                         if (isHidden) {
@@ -1070,6 +1137,18 @@
                                                         <span className="text-green-900 font-bold ml-2">{comment.nombreUsuario}</span>
                                                     </div>
                                                     <span className="text-xs text-green-600 bg-green-200 px-2 py-1 rounded font-bold">Mostrar</span>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (isHiddenIgnored) {
+                                            return (
+                                                <div key={comment.id} className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setRevealedIgnoredCommentIds(prev => [...prev, comment.id])}>
+                                                    <div className="flex items-center gap-2 text-slate-500 font-medium">
+                                                        <Ban className="w-4 h-4"/> Ignorado
+                                                        <span className="text-slate-700 font-bold ml-2">{comment.nombreUsuario}</span>
+                                                    </div>
+                                                    <span className="text-xs text-slate-500 bg-slate-200 px-2 py-1 rounded font-bold">Mostrar</span>
                                                 </div>
                                             );
                                         }
@@ -1134,17 +1213,18 @@
                                                                 {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> ¡Copiado!</> : <><Copy className="w-5 h-5"/> Copiar Respuesta</>}
                                                             </button>
                                                             
-                                                            {/* NUEVO LAYOUT DE BOTONES: Editar, Regenerar, Ignorar */}
                                                             <div className="grid grid-cols-2 gap-2">
                                                                 <button onClick={() => startEditingComment(comment)} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 text-xs transition-colors">
                                                                     <Edit2 className="w-4 h-4"/> Editar
                                                                 </button>
-                                                                {/* NUEVO BOTÓN: Regenerar */}
                                                                 <button onClick={() => { setRegeneratingCommentId(comment.id); setRegenerateInstruction(""); }} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-purple-600 border border-purple-200 hover:bg-purple-50 text-xs transition-colors" title="Dar instrucciones para reescribir esta respuesta">
                                                                     <RefreshCw className="w-4 h-4"/> Repensar
                                                                 </button>
                                                             </div>
-                                                            <button onClick={() => changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder')} className={`w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
+                                                            <button onClick={() => {
+                                                                changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder');
+                                                                setRevealedIgnoredCommentIds(prev => prev.filter(id => id !== comment.id));
+                                                            }} className={`w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
                                                                 <Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar Comentario'}
                                                             </button>
 
@@ -1165,7 +1245,6 @@
                             </div>
                         )}
 
-                        {}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
@@ -1313,7 +1392,6 @@
                         </div>
                     </main>
 
-                    {}
                     {/* MODAL PARA VER REPORTE IA */}
                     {viewingReport && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -1528,7 +1606,6 @@
                         </div>
                     )}
 
-                    {}
                     {/* NUEVO: MODAL PARA REGENERAR RESPUESTA ESPECÍFICA */}
                     {regeneratingCommentId && commentBeingRegenerated && (
                         <div className="fixed inset-0 bg-black/60 z-[55] flex items-center justify-center p-4 backdrop-blur-sm">
