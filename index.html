@@ -50,7 +50,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Star, Sparkles, Trash, RefreshCw } from 'lucide-react';
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -103,12 +103,10 @@
         // --- CONFIGURACIÓN DE GEMINI ---
         const GEMINI_MODEL = "gemini-2.5-flash";
 
-        // VERSIÓN MEJORADA: Maneja mejor el error 429 de límite de cuota esperando más tiempo.
         const fetchGeminiWithRetry = async (payload, apiKey, retries = 4) => {
             const cleanApiKey = (apiKey || "").trim().replace(/^['"]|['"]$/g, "");
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
             let attempt = 0;
-            // Se amplían los tiempos de espera: 2s, 5s, 10s, 18s (Total: 35s de margen de tolerancia)
             const backoff = [2000, 5000, 10000, 18000];
 
             while (attempt < retries) {
@@ -132,7 +130,6 @@
                         if (response.status === 400) throw new Error(`Solicitud inválida a Gemini${detail}`);
                         if (response.status === 401 || response.status === 403) throw new Error(`API Key rechazada o sin permisos para Gemini${detail}`);
                         if (response.status === 404) throw new Error(`Modelo no encontrado o apagado: ${GEMINI_MODEL}${detail}`);
-                        // Modificado para capturar el 429 como reintentable
                         if (response.status === 429) throw new Error(`429_QUOTA_EXCEEDED${detail}`);
                         throw new Error(`Error Gemini ${response.status}${detail}`);
                     }
@@ -140,11 +137,9 @@
                     return await response.json();
                 } catch (error) {
                     const msg = String(error?.message || error);
-                    // Verificamos si es un error por límite de cuota (429) u otro error de red temporal
                     const retryable = msg.includes('429_QUOTA_EXCEEDED') || msg.includes('429') || msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504') || msg.includes('Failed to fetch');
                     
                     if (!retryable || attempt === retries - 1) {
-                        // Si ya es el último intento y sigue siendo 429, mostramos un error más limpio
                         if (msg.includes('429') || msg.includes('QUOTA')) {
                             throw new Error("Límite gratuito de peticiones alcanzado. Por favor, espera 1 minuto e inténtalo de nuevo.");
                         }
@@ -201,7 +196,6 @@
             
             const [strategies, setStrategies] = useState([]);
             const [aliases, setAliases] = useState([]);
-            const [goldenResponses, setGoldenResponses] = useState([]); 
             
             const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
             const [isPurging, setIsPurging] = useState(false);
@@ -269,7 +263,6 @@
                 const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); 
                 const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); 
                 const aliasesRef = collection(db, 'artifacts', appId, 'users', uid, 'user_aliases'); 
-                const goldenRef = collection(db, 'artifacts', appId, 'users', uid, 'golden_responses'); 
 
                 const handleFirestoreError = async (err) => {
                     console.error(err);
@@ -310,13 +303,7 @@
                     setAliases(fetchedAliases);
                 }, handleFirestoreError);
 
-                const unsubGolden = onSnapshot(goldenRef, (snap) => {
-                    const fetchedGolden = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    fetchedGolden.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setGoldenResponses(fetchedGolden);
-                }, handleFirestoreError);
-
-                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); unsubAliases(); unsubGolden(); };
+                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); unsubAliases(); };
             }, [user]);
 
             const handleLogin = async () => {
@@ -335,22 +322,6 @@
             };
 
             const handleLogout = () => { signOut(auth); };
-
-            const saveGoldenResponse = async (comment) => {
-                try {
-                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'golden_responses'), {
-                        originalComment: comment.originalComment,
-                        generatedResponse: comment.generatedResponse,
-                        createdAt: serverTimestamp()
-                    });
-                    alert("¡Guardada como respuesta de oro! La IA imitará este estilo.");
-                } catch (err) { setErrorMsg("Error al guardar respuesta de oro."); }
-            };
-
-            const deleteGoldenResponse = async (id) => {
-                try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'golden_responses', id)); } 
-                catch (err) { setErrorMsg("Error al eliminar respuesta de oro."); }
-            };
 
             const purgeOldData = async () => {
                 if(!confirm("¿Estás seguro de eliminar todos los posts y comentarios de hace más de 3 meses? Esto reducirá tus lecturas en Firebase y no se puede deshacer.")) return;
@@ -487,22 +458,18 @@
                 } catch (err) { setErrorMsg("Error al crear la publicación."); }
             };
 
-            // NUEVA FUNCIÓN: Eliminar Post y sus comentarios asociados
             const deletePost = async (postId, e) => {
                 if (e) e.stopPropagation();
                 if (!confirm("¿Estás seguro de eliminar esta publicación y todas sus respuestas? Esta acción no se puede deshacer.")) return;
                 
                 try {
-                    // Primero, encontrar y borrar todos los comentarios asociados a este post
                     const associatedComments = comments.filter(c => c.postId === postId);
                     for (const c of associatedComments) {
                         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
                     }
                     
-                    // Segundo, borrar el post
                     await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId));
                     
-                    // Si el post eliminado es el que teníamos abierto, lo cerramos
                     if (activePostId === postId) {
                         setActivePostId(null);
                         setCurrentView('manager');
@@ -588,10 +555,6 @@
                     ? `\nMEMORIA DE ALIAS CONOCIDOS:\n${aliases.map(a => `- ${a.originalName} -> Prefiere que lo llamen: ${a.preferredName}`).join('\n')}\n(Usa estos alias de forma natural si el usuario coincide. NO inventes alias, usa solo los de esta lista).` 
                     : "";
 
-                const goldenText = goldenResponses.length > 0 
-                    ? `\nEJEMPLOS DE RESPUESTAS IDEALES ("Few-Shot"):\nPresta mucha atención al tono y estilo de estos ejemplos que ya fueron aprobados:\n${goldenResponses.slice(0, 3).map(g => `- Comentario: "${g.originalComment}"\n  Respuesta: "${g.generatedResponse}"`).join('\n')}\n(Imita este estilo de redacción).` 
-                    : "";
-
                 const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
                 
                 const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST:\n${activePost.context}` : "";
@@ -599,7 +562,7 @@
                 const globalContext = combinedStrategies ? `\nESTRATEGIAS GLOBALES ACTIVAS:\n${combinedStrategies}` : "";
 
                 const systemPrompt = `
-                    Eres el Community Manager de la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Tu trabajo es redactar respuestas breves, útiles y naturales para comentarios de redes sociales.
+                    Eres la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Estás respondiendo DIRECTAMENTE y EN PRIMERA PERSONA a los comentarios que te dejan los ciudadanos en tus redes sociales.
                     
                     ENFOQUES ACTIVOS DE LA PUBLICACIÓN (Combina estos estilos):
                     ${categoryInstructions}
@@ -611,17 +574,18 @@
                     ${globalContext}
                     
                     REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
-                    1. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto, no la menciones.
-                    2. No prometas resolver casos individuales ni gestiones específicas.
-                    3. No hagas acusaciones directas sin evidencia explícita en el contexto.
-                    4. Mantén las respuestas de máximo 1 o 2 frases, salvo que el enfoque Legislativo o Político requiera un poco más de desarrollo.
-                    5. No inicies con 'Hola [Nombre]'. Usa el nombre o alias solo si se siente natural en la frase.
-                    6. CLASIFICACIÓN DE SENTIMIENTO OBLIGATORIA (Elige solo una de estas 6):
+                    1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Estoy trabajando") o plural inclusivo ("Estamos"). ESTÁ ESTRICTAMENTE PROHIBIDO responder en tercera persona. NUNCA digas "La senadora agradece...", "De parte de la senadora" o "El equipo de Ivideliza".
+                    2. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto, no la menciones.
+                    3. No prometas resolver casos individuales ni gestiones específicas.
+                    4. No hagas acusaciones directas sin evidencia explícita en el contexto.
+                    5. Mantén las respuestas de máximo 1 o 2 frases, salvo que el enfoque Legislativo o Político requiera un poco más de desarrollo.
+                    6. No inicies con 'Hola [Nombre]'. Usa el nombre o alias solo si se siente natural en la frase.
+                    7. CLASIFICACIÓN DE SENTIMIENTO OBLIGATORIA (Elige solo una de estas 6):
                        - 'Positivo': apoyo, felicitación, acuerdo.
                        - 'Neutro': comentario informativo, simple.
                        - 'Reclamo ciudadano': queja legítima sobre un problema público, inconformidad ciudadana, sin ataque directo a la senadora. Responde con empatía.
                        - 'Crítica externa': comentario negativo contra el gobierno, autoridades, partidos u otros actores, pero NO dirigido contra la senadora. (No lo clasifiques como Negativo). Responde con contraste político si aplica.
-                       - 'Negativo': insulto, burla o ataque DIRECTO hacia la senadora, su equipo o su trabajo.
+                       - 'Negativo': insulto, burla o ataque DIRECTO hacia ti (la senadora) o tu trabajo.
                        - 'Escalar': denuncia grave, amenaza, solicitud de auxilio, violencia o tema que deba revisar un humano.
                 `;
 
@@ -695,14 +659,15 @@
                 const activePost = posts.find(p => p.id === commentToUpdate.postId);
                 
                 const systemPrompt = `
-                    Eres el Community Manager de la Senadora Ivideliza Reyes Hernández.
-                    Tu tarea ahora es REESCRIBIR una respuesta a un comentario de Facebook.
-                    Al usuario no le gustó la respuesta anterior generada por IA y ha proporcionado una INSTRUCCIÓN ESPECÍFICA para mejorarla.
+                    Eres la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Estás respondiendo DIRECTAMENTE y EN PRIMERA PERSONA a los ciudadanos en tus redes sociales.
+                    Tu tarea ahora es REESCRIBIR una respuesta tuya a un comentario de Facebook.
+                    A tu equipo de comunicación no le gustó la respuesta anterior y te ha proporcionado una INSTRUCCIÓN ESPECÍFICA para que tú (la senadora) mejores tu redacción.
                     
-                    REGLAS:
-                    1. DEBES obedecer la instrucción específica proporcionada por el usuario.
-                    2. Mantén el tono general de un CM profesional, cercano y político (salvo que la instrucción diga lo contrario).
-                    3. No inventes datos que no se te proporcionen.
+                    REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
+                    1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Mi compromiso"). ESTÁ ESTRICTAMENTE PROHIBIDO hablar de ti misma en tercera persona. NUNCA uses frases como "La senadora piensa", "De parte de la senadora" o "El equipo de la senadora".
+                    2. DEBES obedecer la instrucción específica proporcionada para mejorar la respuesta.
+                    3. Mantén tu tono cercano, firme y político, según corresponda.
+                    4. No inventes datos que no se te proporcionen.
                 `;
 
                 const userPrompt = `
@@ -720,7 +685,7 @@
                     "${regenerateInstruction}"
                     -------------------------------------
 
-                    Redacta UNA nueva respuesta mejorada aplicando fielmente la instrucción específica.
+                    Redacta UNA nueva respuesta mejorada aplicando fielmente la instrucción específica, pero sin perder de vista los contextos y estrategias globales proporcionadas.
                 `;
 
                 const payload = {
@@ -1227,12 +1192,6 @@
                                                             }} className={`w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
                                                                 <Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar Comentario'}
                                                             </button>
-
-                                                            {!isNoResponder && (
-                                                                <button onClick={() => saveGoldenResponse(comment)} className="w-full py-2 mt-1 rounded-xl font-bold flex items-center justify-center gap-1 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 text-xs transition-colors" title="Guardar como Ejemplo de Oro">
-                                                                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-500"/> Respuesta Estrella
-                                                                </button>
-                                                            )}
                                                         </>
                                                     )}
                                                 </div>
@@ -1453,27 +1412,6 @@
                                         <button onClick={purgeOldData} disabled={isPurging} className="bg-red-100 text-red-700 hover:bg-red-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center gap-2">
                                             {isPurging ? "Borrando..." : <><Trash2 className="w-4 h-4"/> Purgar &gt; 3 meses</>}
                                         </button>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-3"><Star className="w-5 h-5 text-yellow-500 fill-yellow-400"/> Memoria de Estilo (Respuestas Oro)</h3>
-                                    <p className="text-sm text-slate-500 mb-4">Estas son las respuestas perfectas que la IA usa como ejemplo para aprender tu estilo de redacción.</p>
-                                    
-                                    <div className="space-y-3">
-                                        {goldenResponses.length === 0 ? (
-                                            <p className="text-sm text-slate-400 italic bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">No has guardado respuestas estrella aún.</p>
-                                        ) : (
-                                            goldenResponses.map(g => (
-                                                <div key={g.id} className="bg-yellow-50/30 border border-yellow-200 p-3 rounded-lg flex justify-between items-start gap-4">
-                                                    <div className="text-sm">
-                                                        <p className="text-slate-500 italic text-xs mb-1">"{g.originalComment}"</p>
-                                                        <p className="text-slate-800 font-medium">"{g.generatedResponse}"</p>
-                                                    </div>
-                                                    <button onClick={() => deleteGoldenResponse(g.id)} className="text-slate-400 hover:text-red-500 p-1 bg-white rounded shadow-sm border border-slate-100"><Trash2 className="w-4 h-4"/></button>
-                                                </div>
-                                            ))
-                                        )}
                                     </div>
                                 </div>
                             </div>
