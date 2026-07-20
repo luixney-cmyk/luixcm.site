@@ -94,8 +94,8 @@
 
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-        // Usamos el modelo 3.1-flash-preview porque es el que mejor soporta Google Search Grounding para verificar datos
-        const GEMINI_MODEL = "gemini-3.1-flash-preview";
+        // Usamos el modelo 3-flash-preview porque es el que mejor soporta Google Search Grounding para verificar datos
+        const GEMINI_MODEL = "gemini-3-flash-preview";
 
         const fetchGeminiWithRetry = async (payload, apiKey, retries = 4) => {
             const cleanApiKey = (apiKey || "").trim().replace(/^['"]|['"]$/g, "");
