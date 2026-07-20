@@ -354,17 +354,114 @@
                 }
             };
 
-            // (Se conservan las funciones originales para Manager y Reportes)
-            const purgeOldData = async () => { /* ... (Omitido para brevedad en comentarios, pero presente en código final) ... */ };
-            const saveNewStrategy = async () => { /* ... */ };
-            const deleteStrategy = async (id) => { /* ... */ };
-            const startEditingStrategy = (strategy) => { /* ... */ };
-            const saveEditedStrategy = async () => { /* ... */ };
-            const openAliasModal = (originalName) => { /* ... */ };
-            const saveAlias = async () => { /* ... */ };
-            const startEditingComment = (comment) => { /* ... */ };
-            const saveEditedResponse = async (commentId) => { /* ... */ };
-            const changeCommentStatus = async (commentId, newStatus) => { /* ... */ };
+            // --- INICIO DE FUNCIONES RESTAURADAS ---
+            const purgeOldData = async () => {
+                if(!confirm("¿Estás seguro de eliminar todos los posts y comentarios de hace más de 3 meses? Esto reducirá tus lecturas en Firebase y no se puede deshacer.")) return;
+                setIsPurging(true);
+                const threeMonthsAgo = new Date();
+                threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+                try {
+                    const oldPosts = posts.filter(p => p.createdAt && p.createdAt.toDate() < threeMonthsAgo);
+                    const oldComments = comments.filter(c => c.createdAt && c.createdAt.toDate() < threeMonthsAgo);
+
+                    for (const p of oldPosts) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', p.id));
+                    for (const c of oldComments) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
+
+                    alert(`Mantenimiento completado: Se eliminaron ${oldPosts.length} posts y ${oldComments.length} comentarios viejos.`);
+                } catch(e) { setErrorMsg("Error purgando datos."); }
+                finally { setIsPurging(false); }
+            };
+
+            const saveNewStrategy = async () => {
+                if (!newStrategyText.trim()) return;
+                setIsSavingStrategy(true);
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'strategies'), {
+                        text: newStrategyText.trim(),
+                        createdAt: serverTimestamp()
+                    });
+                    setNewStrategyText("");
+                    setStrategySuccessMsg("¡Instrucción guardada exitosamente!");
+                    setTimeout(() => setStrategySuccessMsg(""), 3000);
+                } catch (err) { setErrorMsg("Error al guardar la estrategia."); } 
+                finally { setIsSavingStrategy(false); }
+            };
+
+            const deleteStrategy = async (id) => {
+                if(confirm("¿Estás seguro de eliminar esta instrucción?")) {
+                    try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', id)); } 
+                    catch (err) { setErrorMsg("Error al eliminar la estrategia."); }
+                }
+            };
+
+            const startEditingStrategy = (strategy) => {
+                setEditingStrategyId(strategy.id);
+                setEditingStrategyText(strategy.text);
+            };
+
+            const saveEditedStrategy = async () => {
+                if (!editingStrategyText.trim()) return;
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', editingStrategyId), {
+                        text: editingStrategyText.trim()
+                    });
+                    setEditingStrategyId(null);
+                    setEditingStrategyText("");
+                } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
+            };
+
+            const openAliasModal = (originalName) => {
+                const existing = aliases.find(a => a.originalName.toLowerCase() === originalName.toLowerCase());
+                setTempAliasOriginal(originalName);
+                setTempAliasPreferred(existing ? existing.preferredName : "");
+                setIsAliasModalOpen(true);
+            };
+
+            const saveAlias = async () => {
+                if (!tempAliasPreferred.trim()) return;
+                try {
+                    const existing = aliases.find(a => a.originalName.toLowerCase() === tempAliasOriginal.toLowerCase());
+                    if (existing) {
+                        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'user_aliases', existing.id), {
+                            preferredName: tempAliasPreferred.trim(),
+                            updatedAt: serverTimestamp()
+                        });
+                    } else {
+                        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'user_aliases'), {
+                            originalName: tempAliasOriginal.trim(),
+                            preferredName: tempAliasPreferred.trim(),
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                    setIsAliasModalOpen(false);
+                } catch (err) { setErrorMsg("Error al guardar alias."); }
+            };
+
+            const startEditingComment = (comment) => {
+                setEditingCommentId(comment.id);
+                setEditingCommentText(comment.generatedResponse);
+            };
+
+            const saveEditedResponse = async (commentId) => {
+                if (!editingCommentText.trim()) return;
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { 
+                        generatedResponse: editingCommentText.trim(),
+                        status: 'editado'
+                    });
+                    setEditingCommentId(null);
+                    setEditingCommentText("");
+                } catch (error) { setErrorMsg("Error al guardar la respuesta editada."); }
+            };
+
+            const changeCommentStatus = async (commentId, newStatus) => {
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { 
+                        status: newStatus 
+                    });
+                } catch (error) { console.error("Error cambiando estado:", error); }
+            };
             
             const handleCopy = (id, text) => {
                 if (copyToClipboard(text)) {
@@ -379,19 +476,417 @@
                 }
             };
 
-            const createNewPost = async () => { /* ... */ };
-            const deletePost = async (postId, e) => { /* ... */ };
-            const openContextModal = () => { /* ... */ };
-            const savePostContext = async () => { /* ... */ };
-            const togglePostCategory = async (postId, categoryName, currentCategories) => { /* ... */ };
-            const runGenerateResponses = async (currentApiKey) => { /* ... */ };
-            const handleGenerateResponses = () => { executeWithApiKey(runGenerateResponses); };
-            const runRegenerateSingleResponse = async (currentApiKey) => { /* ... */ };
-            const handleRegenerateExecute = () => { executeWithApiKey(runRegenerateSingleResponse); };
-            const runGenerateDrafts = async (currentApiKey) => { /* ... */ };
+            const createNewPost = async () => {
+                if (!newPostText.trim()) return;
+                try {
+                    const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'posts'), {
+                        text: newPostText.trim(),
+                        context: "", 
+                        postInstruction: "",
+                        categories: ["Social"], 
+                        createdAt: serverTimestamp()
+                    });
+                    setActivePostId(docRef.id);
+                    setNewPostText("");
+                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                } catch (err) { setErrorMsg("Error al crear la publicación."); }
+            };
+
+            const deletePost = async (postId, e) => {
+                if (e) e.stopPropagation();
+                if (!confirm("¿Estás seguro de eliminar esta publicación y todas sus respuestas? Esta acción no se puede deshacer.")) return;
+                
+                try {
+                    const associatedComments = comments.filter(c => c.postId === postId);
+                    for (const c of associatedComments) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
+                    }
+                    
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId));
+                    
+                    if (activePostId === postId) {
+                        setActivePostId(null);
+                        setCurrentView('manager');
+                    }
+                } catch (err) {
+                    setErrorMsg("Error al eliminar la publicación.");
+                }
+            };
+
+            const openContextModal = () => {
+                const activePost = posts.find(p => p.id === activePostId);
+                if (activePost) {
+                    setTempContextText(activePost.context || "");
+                    setTempPostInstruction(activePost.postInstruction || "");
+                    setIsContextModalOpen(true);
+                }
+            };
+
+            const savePostContext = async () => {
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePostId), { 
+                        context: tempContextText,
+                        postInstruction: tempPostInstruction
+                    });
+                    setIsContextModalOpen(false);
+                } catch (err) { setErrorMsg("Error al guardar el contexto."); }
+            };
+
+            const togglePostCategory = async (postId, categoryName, currentCategories) => {
+                try {
+                    let newCategories = [...currentCategories];
+                    if (newCategories.includes(categoryName)) {
+                        newCategories = newCategories.filter(c => c !== categoryName);
+                    } else {
+                        newCategories.push(categoryName);
+                    }
+                    if (newCategories.length === 0) newCategories = ["Social"];
+                    
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId), { 
+                        categories: newCategories,
+                        category: null 
+                    });
+                } catch (err) { setErrorMsg("Error al actualizar categorías."); }
+            };
+
+            const runGenerateResponses = async (currentApiKey) => {
+                setIsGenerating(true);
+                setErrorMsg("");
+                const activePost = posts.find(p => p.id === activePostId);
+                const activeCategories = getPostCategories(activePost);
+                
+                let categoryInstructions = activeCategories.map(cat => {
+                    switch(cat) {
+                        case 'Social': return "- SOCIAL: Publicación de cercanía ciudadana, comunidad, territorio, causas sociales o interacción cotidiana. Responder con calidez, claridad y naturalidad. Evitar sonar genérico, vacío o robótico.";
+                        case 'Familiar': return "- FAMILIAR: Respuestas muy cortas, cálidas, humanas y sencillas. Idealmente de 1 a 10 palabras. Puede usar emojis cálidos. Cero confrontación.";
+                        case 'Legislativa': return "- LEGISLATIVA: Responder con seriedad institucional, claridad y sustento. Puede usar lenguaje parlamentario o jurídico sencillo, sin inventar datos. Mantener tono profesional.";
+                        case 'Política': return "- POLÍTICA: Responder con firmeza, contraste y claridad política. Tono directo, de oposición, pero siempre respetuoso. No insultar, no acusar sin evidencia y no inventar datos.";
+                        default: return "";
+                    }
+                }).join('\n');
+
+                const activeAliasesText = aliases.length > 0 
+                    ? `\nMEMORIA DE ALIAS CONOCIDOS:\n${aliases.map(a => `- ${a.originalName} -> Prefiere que lo llamen: ${a.preferredName}`).join('\n')}\n(Usa estos alias de forma natural si el usuario coincide. NO inventes alias, usa solo los de esta lista).` 
+                    : "";
+
+                const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
+                
+                const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST:\n${activePost.context}` : "";
+                const postSpecificInstruction = activePost.postInstruction?.trim() ? `\nINSTRUCCIÓN ESPECÍFICA PARA ESTA PUBLICACIÓN (PRIORIDAD ALTA):\n${activePost.postInstruction}` : "";
+                const globalContext = combinedStrategies ? `\nESTRATEGIAS GLOBALES ACTIVAS:\n${combinedStrategies}` : "";
+
+                const systemPrompt = `
+                    Eres la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Estás respondiendo DIRECTAMENTE y EN PRIMERA PERSONA a los comentarios que te dejan los ciudadanos en tus redes sociales.
+                    
+                    ENFOQUES ACTIVOS DE LA PUBLICACIÓN (Combina estos estilos):
+                    ${categoryInstructions}
+                    
+                    ${postContext}
+                    ${postSpecificInstruction}
+                    ${activeAliasesText}
+                    ${globalContext}
+                    
+                    REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
+                    1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Estoy trabajando") o plural inclusivo ("Estamos"). ESTÁ ESTRICTAMENTE PROHIBIDO responder en tercera persona. NUNCA digas "La senadora agradece...", "De parte de la senadora" o "El equipo de Ivideliza".
+                    2. CRÍTICO Y OBLIGATORIO: Nunca uses la misma estructura de frase dos veces seguidas en este bloque de respuestas. Varía tu vocabulario (ej. "Gracias", "Te agradezco", "Qué gusto leerte", "Valoro tu mensaje") para que ninguna respuesta se parezca a la anterior. ¡Sé natural y orgánica!
+                    3. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto, no la menciones.
+                    4. No prometas resolver casos individuales ni gestiones específicas.
+                    5. No hagas acusaciones directas sin evidencia explícita en el contexto.
+                    6. Mantén las respuestas de máximo 1 o 2 frases, salvo que el enfoque Legislativo o Político requiera un poco más de desarrollo.
+                    7. No inicies con 'Hola [Nombre]'. Usa el nombre o alias solo si se siente natural en la frase.
+                    8. CLASIFICACIÓN DE SENTIMIENTO OBLIGATORIA (Elige solo una de estas 6):
+                       - 'Positivo': apoyo, felicitación, acuerdo.
+                       - 'Neutro': comentario informativo, simple.
+                       - 'Reclamo ciudadano': queja legítima sobre un problema público, inconformidad ciudadana, sin ataque directo a la senadora. Responde con empatía.
+                       - 'Crítica externa': comentario negativo contra el gobierno, autoridades, partidos u otros actores, pero NO dirigido contra la senadora. (No lo clasifiques como Negativo). Responde con contraste político si aplica.
+                       - 'Negativo': insulto, burla o ataque DIRECTO hacia ti (la senadora) o tu trabajo.
+                       - 'Escalar': denuncia grave, amenaza, solicitud de auxilio, violencia o tema que deba revisar un humano.
+                `;
+
+                const userPrompt = `PUBLICACIÓN:\n"${activePost.text}"\n\nCOMENTARIOS A RESPONDER:\n${newCommentsText}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userPrompt }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    nombreUsuario: { type: "STRING" },
+                                    comentarioOriginal: { type: "STRING" },
+                                    sentimiento: { type: "STRING", description: "Opciones: Positivo, Neutro, Reclamo ciudadano, Crítica externa, Negativo, Escalar" },
+                                    razonSentimiento: { type: "STRING", description: "Breve justificación de por qué elegiste este sentimiento" },
+                                    requiereRevision: { type: "BOOLEAN" },
+                                    respuestaGenerada: { type: "STRING" },
+                                    recomendacion: { type: "STRING", description: "Ej: Responder, No responder, Revisar antes, Responder institucional" },
+                                    usarAliasDetectado: { type: "STRING", description: "Si usaste un alias de la lista, indícalo aquí, sino déjalo vacío" }
+                                },
+                                required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada", "recomendacion"]
+                            }
+                        }
+                    }
+                };
+
+                try {
+                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
+                    const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) throw new Error("Asegúrate de que la API key de Gemini sea válida.");
+                    
+                    const generatedItems = JSON.parse(jsonText);
+                    
+                    for (const item of generatedItems) {
+                        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'comments'), {
+                            postId: activePostId,
+                            nombreUsuario: item.nombreUsuario || 'Desconocido',
+                            originalComment: item.comentarioOriginal,
+                            sentiment: item.sentimiento,
+                            sentimentReason: item.razonSentimiento || "",
+                            requiresReview: item.requiereRevision || false,
+                            generatedResponse: item.respuestaGenerada,
+                            recommendation: item.recomendacion || "",
+                            usedAlias: item.usarAliasDetectado || "",
+                            status: "pendiente",
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                    setNewCommentsText("");
+                } catch (err) {
+                    console.error(err);
+                    setErrorMsg("Error al generar respuestas: " + (err.message || "Revisa la API Key."));
+                } finally { setIsGenerating(false); }
+            };
+
+            const handleGenerateResponses = () => {
+                if (!newCommentsText.trim() || !activePostId || isGenerating) return;
+                executeWithApiKey(runGenerateResponses);
+            };
+
+            const runRegenerateSingleResponse = async (currentApiKey) => {
+                if (!regeneratingCommentId || !regenerateInstruction.trim()) return;
+                setIsRegeneratingSingle(true);
+                setErrorMsg("");
+
+                const commentToUpdate = comments.find(c => c.id === regeneratingCommentId);
+                const activePost = posts.find(p => p.id === commentToUpdate.postId);
+                
+                const systemPrompt = `
+                    Eres la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Estás respondiendo DIRECTAMENTE y EN PRIMERA PERSONA a los ciudadanos en tus redes sociales.
+                    Tu tarea ahora es REESCRIBIR una respuesta tuya a un comentario de Facebook.
+                    A tu equipo de comunicación no le gustó la respuesta anterior y te ha proporcionado una INSTRUCCIÓN ESPECÍFICA para que tú (la senadora) mejores tu redacción.
+                    
+                    REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
+                    1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Mi compromiso"). ESTÁ ESTRICTAMENTE PROHIBIDO hablar de ti misma en tercera persona. NUNCA uses frases como "La senadora piensa", "De parte de la senadora" o "El equipo de la senadora".
+                    2. VARIEDAD: Varía tu vocabulario para no sonar repetitiva, robótica o automatizada.
+                    3. DEBES obedecer la instrucción específica proporcionada para mejorar la respuesta.
+                    4. Mantén tu tono cercano, firme y político, según corresponda.
+                    5. No inventes datos que no se te proporcionen.
+                `;
+
+                const userPrompt = `
+                    PUBLICACIÓN ORIGINAL (Contexto):
+                    "${activePost.text}"
+
+                    COMENTARIO DEL CIUDADANO (${commentToUpdate.nombreUsuario}):
+                    "${commentToUpdate.originalComment}"
+
+                    RESPUESTA GENERADA ANTERIORMENTE (La que hay que mejorar):
+                    "${commentToUpdate.generatedResponse}"
+
+                    -------------------------------------
+                    INSTRUCCIÓN ESPECÍFICA DE MEJORA:
+                    "${regenerateInstruction}"
+                    -------------------------------------
+
+                    Redacta UNA nueva respuesta mejorada aplicando fielmente la instrucción específica, pero sin perder de vista los contextos y estrategias globales proporcionadas.
+                `;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userPrompt }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                nuevaRespuesta: { type: "STRING", description: "La nueva respuesta reescrita basándose en la instrucción." }
+                            },
+                            required: ["nuevaRespuesta"]
+                        }
+                    }
+                };
+
+                try {
+                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
+                    const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) throw new Error("Error al comunicarse con Gemini.");
+                    
+                    const result = JSON.parse(jsonText);
+                    
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', regeneratingCommentId), { 
+                        generatedResponse: result.nuevaRespuesta,
+                        status: 'editado' 
+                    });
+                    
+                    setRegeneratingCommentId(null);
+                    setRegenerateInstruction("");
+                } catch (err) {
+                    console.error(err);
+                    setErrorMsg("Error al regenerar la respuesta: " + (err.message || "Intenta nuevamente."));
+                } finally { 
+                    setIsRegeneratingSingle(false); 
+                }
+            };
+
+            const handleRegenerateExecute = () => {
+                executeWithApiKey(runRegenerateSingleResponse);
+            };
+
+            const runGenerateDrafts = async (currentApiKey) => {
+                setIsGeneratingDrafts(true);
+                const latestReport = aiReports[0]; 
+                
+                const prompt = `
+                    Actúa como Consultor Político y Copywriter para la Senadora Ivideliza Reyes.
+                    Contexto y temperatura social (del último reporte mensual): ${latestReport ? JSON.stringify(latestReport.report) : 'Sin datos previos. Genera posts orgánicos y proactivos.'}
+                    
+                    Redacta 3 borradores de publicaciones para Facebook.
+                    Deben ser altamente atractivos, cercanos a la ciudadanía y responder a los temas de interés actuales.
+                    
+                    Devuelve el resultado en formato JSON estricto con un array "borradores", cada uno con "tema" y "texto".
+                `;
+
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                borradores: { 
+                                    type: "ARRAY", 
+                                    items: { 
+                                        type: "OBJECT", 
+                                        properties: { tema: { type: "STRING" }, texto: { type: "STRING" } } 
+                                    } 
+                                }
+                            }
+                        }
+                    }
+                };
+
+                try {
+                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
+                    const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
+                    setDraftsList(result.borradores);
+                    setIsDraftModalOpen(true);
+                } catch (err) { setErrorMsg("Error al generar borradores."); } 
+                finally { setIsGeneratingDrafts(false); }
+            };
             const generateDrafts = () => executeWithApiKey(runGenerateDrafts);
-            const runGenerateReport = async (currentApiKey) => { /* ... */ };
+
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            const currentMonthName = monthNames[currentMonth];
+
+            const monthlyPosts = posts.filter(p => {
+                if (!p.createdAt) return false;
+                const d = p.createdAt.toDate();
+                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+            });
+
+            const monthlyComments = comments.filter(c => {
+                if (!c.createdAt) return false;
+                const d = c.createdAt.toDate();
+                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+            });
+
+            let sentPos = 0, sentNeu = 0, sentRec = 0, sentCrit = 0, sentNeg = 0, sentEsc = 0;
+            monthlyComments.forEach(c => {
+                const s = c.sentiment || '';
+                if (s === 'Positivo') sentPos++;
+                else if (s === 'Neutro') sentNeu++;
+                else if (s === 'Reclamo ciudadano' || s === 'Reclamo') sentRec++;
+                else if (s === 'Crítica externa') sentCrit++;
+                else if (s === 'Escalar') sentEsc++;
+                else sentNeg++; 
+            });
+
+            const catCounts = { Social: 0, Familiar: 0, Legislativa: 0, Política: 0 };
+            monthlyPosts.forEach(p => { 
+                const cats = getPostCategories(p);
+                cats.forEach(c => { if(catCounts[c] !== undefined) catCounts[c]++; });
+            });
+            let topCat = "Ninguno";
+            let maxCount = 0;
+            for (const [cat, count] of Object.entries(catCounts)) {
+                if (count > maxCount) { maxCount = count; topCat = cat; }
+            }
+
+            const avgEngagement = monthlyPosts.length > 0 ? (monthlyComments.length / monthlyPosts.length).toFixed(1) : 0;
+
+            const runGenerateReport = async (currentApiKey) => {
+                setIsGeneratingReport(true);
+                
+                const sampleTexts = monthlyPosts.map(p => p.text).join(" | ").substring(0, 3000);
+
+                const prompt = `
+                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes para el mes de ${currentMonthName} ${currentYear}.
+                    
+                    Datos del mes:
+                    - Publicaciones totales: ${monthlyPosts.length}
+                    - Desglose por enfoque: ${JSON.stringify(catCounts)}
+                    - Comentarios totales recibidos: ${monthlyComments.length}
+                    - Sentimientos (Detalle estratégico):
+                        * Apoyo ciudadano (Positivo): ${sentPos}
+                        * Neutrales: ${sentNeu}
+                        * Reclamos ciudadanos (Atención necesaria): ${sentRec}
+                        * Críticas externas (Al gobierno u otros, no a ella): ${sentCrit}
+                        * Ataques directos a la senadora (Negativos): ${sentNeg}
+                        * Casos delicados (Escalar): ${sentEsc}
+                    
+                    Muestra de textos publicados: ${sampleTexts}
+
+                    Extrae y genera un JSON estricto con:
+                    1. "temaPrincipal": Cuál fue el tema más recurrente o importante.
+                    2. "analisisSituacion": Un párrafo sobre la temperatura ciudadana (distinguiendo entre los que se quejan del gobierno y los que atacan a la senadora).
+                    3. "propuestas": Array con 3 propuestas de mejora.
+                `;
+
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                temaPrincipal: { type: "STRING" },
+                                analisisSituacion: { type: "STRING" },
+                                propuestas: { type: "ARRAY", items: { type: "STRING" } }
+                            }
+                        }
+                    }
+                };
+
+                try {
+                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
+                    const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
+                    
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ai_reports'), {
+                        title: `Reporte ${currentMonthName} ${currentYear}`,
+                        report: result,
+                        month: currentMonth,
+                        year: currentYear,
+                        createdAt: serverTimestamp()
+                    });
+                } catch (err) { setErrorMsg("Error al generar el reporte de IA."); } 
+                finally { setIsGeneratingReport(false); }
+            };
             const generateAIReport = () => executeWithApiKey(runGenerateReport);
+            // --- FIN DE FUNCIONES RESTAURADAS ---
 
             // Implementación completa de las funciones base requeridas para que el Manager funcione
             const toggleScriptCategory = (categoryName) => {
