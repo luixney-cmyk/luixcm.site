@@ -296,11 +296,12 @@
                     TONOS APLICADOS:
                     ${activeTones.length > 0 ? activeTones.join(', ') : 'Institucional / Informativo'}
                     
-                    REGLAS OBLIGATORIAS:
-                    1. Identidad: Habla en primera persona (la Senadora hablando directo a la cámara) o en voz en off firme.
-                    2. Lenguaje: Claro, directo, persuasivo. Cero palabras robóticas o complejas.
-                    3. Formato: Escribe el guion listo para leerse. No pongas "Hola a todos" si es un tema de confrontación. 
-                    4. Estructura recomendada: Gancho fuerte en los primeros 3 segundos, desarrollo rápido y llamado a la acción (Call to Action) claro al final.
+                    REGLAS OBLIGATORIAS (CERO TOLERANCIA):
+                    1. FORMATO ESTRICTO: Devuelve ÚNICAMENTE los párrafos con el texto que se va a hablar. 
+                    2. PROHIBIDO etiquetas de hablante: NUNCA escribas "Senadora:", "Ivideliza:", "Voz en off:", etc.
+                    3. PROHIBIDO indicaciones visuales/auditivas: NUNCA agregues corchetes, paréntesis, indicaciones de vestuario, cámara, cortes, música o lugares (ej. [Música tensa], [Corte a...], [Mirando a cámara]).
+                    4. Lenguaje: Claro, directo, persuasivo, hablando en primera persona ("Yo", "Nosotros").
+                    5. Estructura: Gancho fuerte en los primeros 3 segundos, desarrollo y llamado a la acción. ¡SOLO TEXTO PURO LISTO PARA EL TELEPROMPTER!
                 `;
 
                 const payload = {
@@ -375,7 +376,8 @@
                     El director te ha dado la siguiente INSTRUCCIÓN para modificarlo:
                     "${refineText}"
                     
-                    Por favor, reescribe el guion aplicando EXACTAMENTE esa instrucción. Mantenlo en formato de guion listo para leerse.
+                    Por favor, reescribe el guion aplicando EXACTAMENTE esa instrucción.
+                    REGLA ESTRICTA: Devuelve ÚNICAMENTE el texto hablado (párrafos). ESTÁ TOTALMENTE PROHIBIDO incluir etiquetas de quién habla (ej. "Senadora:"), acotaciones, corchetes, música o indicaciones de cámara. Solo el texto puro para leerse de corrido.
                 `;
 
                 const payload = { contents: [{ parts: [{ text: prompt }] }] };
