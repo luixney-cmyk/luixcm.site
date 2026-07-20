@@ -243,6 +243,7 @@
             const [scriptContent, setScriptContent] = useState("");
             const [scriptRefinement, setScriptRefinement] = useState("");
             const [isRefiningScript, setIsRefiningScript] = useState(false);
+            const [isAdaptingScript, setIsAdaptingScript] = useState(false);
             const [scriptSources, setScriptSources] = useState([]);
 
             useEffect(() => {
@@ -569,6 +570,54 @@
 
             const handleRefineScriptClick = () => { executeWithApiKey(runRefineScript); };
 
+            // Función para pulir y "adecuar" el texto editado manualmente
+            const runAdaptScript = async (currentApiKey) => {
+                if (!scriptContent.trim()) return;
+                
+                setIsAdaptingScript(true);
+                setErrorMsg("");
+
+                const systemPrompt = `
+                    Eres un editor y copywriter profesional.
+                    Tu tarea es tomar el texto proporcionado (que es un guion editado manualmente por un humano) y ÚNICAMENTE "adecuarlo" o pulirlo:
+                    1. Corrige cualquier error ortográfico o gramatical.
+                    2. Mejora la fluidez y coherencia (conecta mejor las ideas si quedaron sueltas o abruptas tras la edición manual).
+                    3. ESTRICTAMENTE PROHIBIDO: NO cambies el significado, NO agregues nueva información o datos, y mantén el tono original.
+                    Devuelve únicamente el texto corregido y pulido, listo para leerse.
+                `;
+
+                const payload = {
+                    contents: [{ parts: [{ text: scriptContent }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                };
+
+                try {
+                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
+                    const candidate = data.candidates?.[0];
+                    const text = candidate.content?.parts?.[0]?.text || "";
+                    
+                    setScriptContent(text);
+
+                    // Guardar automáticamente los cambios pulidos
+                    if (activeScriptId) {
+                        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'video_scripts', activeScriptId), {
+                            content: text,
+                            updatedAt: serverTimestamp()
+                        });
+                        setStrategySuccessMsg("Texto adecuado y guardado.");
+                        setTimeout(() => setStrategySuccessMsg(""), 3000);
+                    }
+
+                } catch (err) {
+                    console.error(err);
+                    setErrorMsg("Error al adecuar guion: " + (err.message || "Intenta nuevamente."));
+                } finally {
+                    setIsAdaptingScript(false);
+                }
+            };
+
+            const handleAdaptScriptClick = () => { executeWithApiKey(runAdaptScript); };
+
             const saveManualScriptEdit = async () => {
                 if (activeScriptId && scriptContent) {
                     try {
@@ -827,10 +876,13 @@
                                     {/* PANEL DERECHO: Editor y Refinamiento */}
                                     <div className="space-y-6 h-full flex flex-col">
                                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden min-h-[400px]">
-                                            <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+                                            <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0 flex-wrap gap-2">
                                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">2. Resultado y Edición</h3>
-                                                <div className="flex gap-2">
-                                                    {strategySuccessMsg && <span className="text-xs text-green-600 font-bold flex items-center gap-1"><Check className="w-3 h-3"/> Guardado</span>}
+                                                <div className="flex gap-2 items-center">
+                                                    {strategySuccessMsg && <span className="text-xs text-green-600 font-bold flex items-center gap-1 mr-1"><Check className="w-3 h-3"/> Guardado</span>}
+                                                    <button onClick={handleAdaptScriptClick} disabled={!scriptContent || isAdaptingScript} className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors disabled:opacity-50" title="Pulir y unir ideas tras tu edición manual">
+                                                        {isAdaptingScript ? <RefreshCw className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>} Adecuar
+                                                    </button>
                                                     <button onClick={saveManualScriptEdit} disabled={!scriptContent} className="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors disabled:opacity-50">
                                                         <Save className="w-3 h-3"/> Guardar
                                                     </button>
