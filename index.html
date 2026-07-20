@@ -5,13 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestor CM - Sen. Ivideliza Reyes</title>
     
-    <!-- 1. Cargar Tailwind CSS para el diseño -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. Cargar Babel para traducir React en el navegador -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 3. Importar React, iconos y Firebase (Solución de dependencias) -->
     <script type="importmap">
     {
         "imports": {
@@ -25,7 +21,6 @@
     }
     </script>
 
-    <!-- Capturador de errores global por si algo falla -->
     <script>
         window.addEventListener('error', function(event) {
             const root = document.getElementById('root');
@@ -38,7 +33,6 @@
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
     
     <div id="root">
-        <!-- Loader inicial nativo para evitar pantalla blanca total -->
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; color:#64748b;">
             <div style="width:40px; height:40px; border:4px solid #3b82f6; border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></div>
             <p style="margin-top:20px; font-weight:bold;">Cargando Gestor CM...</p>
@@ -46,22 +40,20 @@
         </div>
     </div>
 
-    <!-- 4. El Código de tu Aplicación -->
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
             Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, 
-            AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, Target, Lightbulb, 
-            MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, 
-            UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw, Video, Info, Wand2
+            AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, 
+            Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, 
+            Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw, Video, Info, Wand2
         } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 
-        // --- CREDENCIALES DE FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyA7xjysJVQb3tYEb8ZU9yHbs-MBDWVUhk4",
             authDomain: "gestor-ivi.firebaseapp.com",
@@ -79,34 +71,23 @@
         provider.setCustomParameters({ prompt: 'select_account' });
         const appId = firebaseConfig.projectId;
 
-        // --- ACCESO PERMITIDO ---
         const ALLOWED_EMAIL = "luixnay@gmail.com";
         const normalizeEmail = (email) => (email || "").trim().toLowerCase();
-        const isAllowedUser = (firebaseUser) => {
-            return firebaseUser &&
-                   normalizeEmail(firebaseUser.email) === ALLOWED_EMAIL &&
-                   firebaseUser.emailVerified === true;
-        };
+        const isAllowedUser = (firebaseUser) => firebaseUser && normalizeEmail(firebaseUser.email) === ALLOWED_EMAIL && firebaseUser.emailVerified === true;
 
-        // --- FUNCIONES UTILITARIAS ---
         const copyToClipboard = (text) => {
             const textArea = document.createElement("textarea");
             textArea.value = text;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
+            textArea.style.position = "fixed"; textArea.style.left = "-9999px";
+            document.body.appendChild(textArea); textArea.focus(); textArea.select();
             let successful = false;
             try { successful = document.execCommand('copy'); } catch (err) {}
-            document.body.removeChild(textArea);
-            return successful;
+            document.body.removeChild(textArea); return successful;
         };
 
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-        // --- CONFIGURACIÓN DE GEMINI ---
-        const GEMINI_MODEL = "gemini-1.5-flash"; // MODELO ESTABLE Y SEGURO (Previene el error 404)
+        const GEMINI_MODEL = "gemini-1.5-flash"; 
 
         const fetchGeminiWithRetry = async (payload, apiKey, retries = 4) => {
             const cleanApiKey = (apiKey || "").trim().replace(/^['"]|['"]$/g, "");
@@ -118,53 +99,41 @@
                 try {
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
 
                     if (!response.ok) {
                         let detail = "";
-                        try {
-                            const errJson = await response.json();
-                            detail = errJson?.error?.message ? ` - ${errJson.error.message}` : "";
-                        } catch (_) {}
-
-                        if (response.status === 400) throw new Error(`Solicitud inválida a Gemini${detail}`);
-                        if (response.status === 401 || response.status === 403) throw new Error(`API Key rechazada o sin permisos para Gemini${detail}`);
-                        if (response.status === 404) throw new Error(`Modelo no encontrado o apagado: ${GEMINI_MODEL}${detail}`);
-                        if (response.status === 429) throw new Error(`429_QUOTA_EXCEEDED${detail}`);
-                        throw new Error(`Error Gemini ${response.status}${detail}`);
+                        try { const errJson = await response.json(); detail = errJson?.error?.message ? ` - ${errJson.error.message}` : ""; } catch (_) {}
+                        if (response.status === 400) throw new Error(`Solicitud inválida${detail}`);
+                        if (response.status === 401 || response.status === 403) throw new Error(`API Key rechazada${detail}`);
+                        if (response.status === 429) throw new Error(`Límite alcanzado (429)${detail}`);
+                        throw new Error(`Error ${response.status}${detail}`);
                     }
-
                     return await response.json();
                 } catch (error) {
                     const msg = String(error?.message || error);
-                    const retryable = msg.includes('429_QUOTA_EXCEEDED') || msg.includes('429') || msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504') || msg.includes('Failed to fetch');
+                    const retryable = msg.includes('429') || msg.includes('500') || msg.includes('Failed to fetch');
                     
-                    if (!retryable || attempt === retries - 1) {
-                        if (msg.includes('429') || msg.includes('QUOTA')) {
-                            throw new Error("Límite gratuito de peticiones alcanzado. Por favor, espera 1 minuto e inténtalo de nuevo.");
-                        }
-                        throw error;
-                    }
-                    
-                    console.warn(`Límite de API alcanzado (intento ${attempt + 1}). Esperando ${backoff[attempt]/1000} segundos para reconectar...`);
+                    if (!retryable || attempt === retries - 1) throw error;
                     await delay(backoff[attempt]);
                     attempt++;
                 }
             }
         };
 
+        const parseJSON = (text) => {
+            try {
+                const clean = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+                return JSON.parse(clean);
+            } catch (e) { throw new Error("La IA no devolvió un formato válido."); }
+        };
+
         const getPostCategories = (post) => {
             if (!post) return ["Social"];
-            if (post.categories && Array.isArray(post.categories) && post.categories.length > 0) {
-                return post.categories;
-            }
-            if (post.category) {
-                return post.category === "Genérica" ? ["Social"] : [post.category];
-            }
+            if (post.categories && Array.isArray(post.categories) && post.categories.length > 0) return post.categories;
+            if (post.category) return post.category === "Genérica" ? ["Social"] : [post.category];
             return ["Social"];
         };
 
@@ -183,26 +152,27 @@
             }
         };
 
-        // --- APLICACIÓN PRINCIPAL ---
         function App() {
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
             const [currentView, setCurrentView] = useState('manager'); // 'manager', 'analysis', 'scripts'
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-            // Estados Modales UI Propios
-            const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: "", onConfirm: null });
-            const [alertDialog, setAlertDialog] = useState({ isOpen: false, message: "" });
-
-            // Estados Generales
+            // Bases de datos principales
             const [posts, setPosts] = useState([]);
             const [comments, setComments] = useState([]);
             const [strategies, setStrategies] = useState([]);
             const [aliases, setAliases] = useState([]);
             const [aiReports, setAiReports] = useState([]);
-            const [scripts, setScripts] = useState([]); // Guiones
-            
-            // Estados Manager
+            const [scripts, setScripts] = useState([]);
+
+            // Modales genéricos
+            const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: "", onConfirm: null });
+            const [alertDialog, setAlertDialog] = useState({ isOpen: false, message: "" });
+            const showConfirm = (message, onConfirmCallback) => setConfirmDialog({ isOpen: true, message, onConfirm: () => { onConfirmCallback(); setConfirmDialog({ isOpen: false, message: "", onConfirm: null }); } });
+            const showAlert = (message) => setAlertDialog({ isOpen: true, message });
+
+            // Estados - Gestión
             const [activePostId, setActivePostId] = useState(null);
             const [isContextModalOpen, setIsContextModalOpen] = useState(false);
             const [tempContextText, setTempContextText] = useState("");
@@ -218,27 +188,8 @@
             const [copiedId, setCopiedId] = useState(null);
             const [revealedCopiedCommentIds, setRevealedCopiedCommentIds] = useState([]);
             const [revealedIgnoredCommentIds, setRevealedIgnoredCommentIds] = useState([]);
-            
-            // Estados Settings / Alias
-            const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-            const [isPurging, setIsPurging] = useState(false);
-            const [isAliasModalOpen, setIsAliasModalOpen] = useState(false);
-            const [tempAliasOriginal, setTempAliasOriginal] = useState("");
-            const [tempAliasPreferred, setTempAliasPreferred] = useState("");
-            
-            // Estados Estrategia
-            const [newStrategyText, setNewStrategyText] = useState("");
-            const [isSavingStrategy, setIsSavingStrategy] = useState(false);
-            const [editingStrategyId, setEditingStrategyId] = useState(null);
-            const [editingStrategyText, setEditingStrategyText] = useState("");
-            const [strategySuccessMsg, setStrategySuccessMsg] = useState("");
-            const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
-            const [draftsList, setDraftsList] = useState([]);
-            const [isGeneratingDrafts, setIsGeneratingDrafts] = useState(false);
-            const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-            const [viewingReport, setViewingReport] = useState(null);
 
-            // Estados Guiones (Scripts)
+            // Estados - Guiones (NUEVO)
             const [activeScriptId, setActiveScriptId] = useState(null);
             const [scriptTopic, setScriptTopic] = useState("");
             const [scriptCategories, setScriptCategories] = useState(["Legislativo"]);
@@ -248,39 +199,35 @@
             const [scriptRefineInstruction, setScriptRefineInstruction] = useState("");
             const [isRefiningScript, setIsRefiningScript] = useState(false);
             const [isAdaptingScript, setIsAdaptingScript] = useState(false);
-            const [copiedScriptId, setCopiedScriptId] = useState(false);
 
-            // Estados Globales
-            const [errorMsg, setErrorMsg] = useState("");
-            const [loginError, setLoginError] = useState("");
+            // Estados - Otros
+            const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+            const [isPurging, setIsPurging] = useState(false);
+            const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+            const [draftsList, setDraftsList] = useState([]);
+            const [isAliasModalOpen, setIsAliasModalOpen] = useState(false);
+            const [tempAliasOriginal, setTempAliasOriginal] = useState("");
+            const [tempAliasPreferred, setTempAliasPreferred] = useState("");
+            const [newStrategyText, setNewStrategyText] = useState("");
+            const [isSavingStrategy, setIsSavingStrategy] = useState(false);
+            const [editingStrategyId, setEditingStrategyId] = useState(null);
+            const [editingStrategyText, setEditingStrategyText] = useState("");
+            const [strategySuccessMsg, setStrategySuccessMsg] = useState("");
+            const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+            const [viewingReport, setViewingReport] = useState(null);
             const [isApiModalOpen, setIsApiModalOpen] = useState(false);
             const [tempApiKey, setTempApiKey] = useState("");
             const [pendingAction, setPendingAction] = useState(null);
-
-            // Helpers para Custom Modals
-            const showConfirm = (message, onConfirmCallback) => {
-                setConfirmDialog({ 
-                    isOpen: true, 
-                    message, 
-                    onConfirm: () => { 
-                        onConfirmCallback(); 
-                        setConfirmDialog({ isOpen: false, message: "", onConfirm: null }); 
-                    } 
-                });
-            };
-            const showAlert = (message) => setAlertDialog({ isOpen: true, message });
+            const [errorMsg, setErrorMsg] = useState("");
+            const [loginError, setLoginError] = useState("");
 
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
                     if (currentUser && !isAllowedUser(currentUser)) {
-                        setUser(null);
-                        setLoginError(`Acceso denegado. Esta aplicación solo está autorizada para ${ALLOWED_EMAIL}.`);
-                        await signOut(auth);
-                        setAuthLoading(false);
-                        return;
+                        setUser(null); setLoginError(`Acceso denegado. Esta aplicación solo está autorizada para ${ALLOWED_EMAIL}.`);
+                        await signOut(auth); setAuthLoading(false); return;
                     }
-                    setUser(currentUser);
-                    setAuthLoading(false);
+                    setUser(currentUser); setAuthLoading(false);
                 });
                 return () => unsubscribe();
             }, []);
@@ -288,93 +235,48 @@
             useEffect(() => {
                 if (!user) return;
                 const uid = user.uid; 
-
-                const postsRef = collection(db, 'artifacts', appId, 'users', uid, 'posts');
-                const commentsRef = collection(db, 'artifacts', appId, 'users', uid, 'comments');
-                const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); 
-                const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); 
-                const aliasesRef = collection(db, 'artifacts', appId, 'users', uid, 'user_aliases'); 
-                const scriptsRef = collection(db, 'artifacts', appId, 'users', uid, 'scripts'); 
-
-                const handleFirestoreError = async (err) => {
-                    console.error(err);
-                    if (err.code === 'permission-denied') {
-                        setErrorMsg("Acceso denegado por las reglas de Firebase.");
-                        await signOut(auth);
-                    }
+                const dbRefs = {
+                    posts: collection(db, 'artifacts', appId, 'users', uid, 'posts'),
+                    comments: collection(db, 'artifacts', appId, 'users', uid, 'comments'),
+                    strategies: collection(db, 'artifacts', appId, 'users', uid, 'strategies'),
+                    reports: collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'),
+                    aliases: collection(db, 'artifacts', appId, 'users', uid, 'user_aliases'),
+                    scripts: collection(db, 'artifacts', appId, 'users', uid, 'scripts')
                 };
 
-                const unsubPosts = onSnapshot(postsRef, (snap) => {
-                    const fetchedPosts = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    fetchedPosts.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setPosts(fetchedPosts);
-                }, handleFirestoreError);
+                const errHandler = async (err) => { if (err.code === 'permission-denied') { setErrorMsg("Acceso denegado por reglas Firebase."); await signOut(auth); } };
+                const unsubs = [];
 
-                const unsubComments = onSnapshot(commentsRef, (snap) => {
-                    const fetchedComments = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    fetchedComments.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setComments(fetchedComments);
-                }, handleFirestoreError);
+                unsubs.push(onSnapshot(dbRefs.posts, (snap) => setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(b.createdAt?.toMillis()||0)-(a.createdAt?.toMillis()||0))), errHandler));
+                unsubs.push(onSnapshot(dbRefs.comments, (snap) => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(b.createdAt?.toMillis()||0)-(a.createdAt?.toMillis()||0))), errHandler));
+                unsubs.push(onSnapshot(dbRefs.strategies, (snap) => setStrategies(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(b.createdAt?.toMillis()||0)-(a.createdAt?.toMillis()||0))), errHandler));
+                unsubs.push(onSnapshot(dbRefs.reports, (snap) => setAiReports(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(b.createdAt?.toMillis()||0)-(a.createdAt?.toMillis()||0))), errHandler));
+                unsubs.push(onSnapshot(dbRefs.aliases, (snap) => setAliases(snap.docs.map(d => ({ id: d.id, ...d.data() }))), errHandler));
+                unsubs.push(onSnapshot(dbRefs.scripts, (snap) => setScripts(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(b.createdAt?.toMillis()||0)-(a.createdAt?.toMillis()||0))), errHandler));
 
-                const unsubStrategies = onSnapshot(strategiesRef, (snap) => {
-                    const fetchedStrategies = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    fetchedStrategies.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setStrategies(fetchedStrategies);
-                }, handleFirestoreError);
-
-                const unsubReports = onSnapshot(reportsRef, (snap) => {
-                    const fetchedReports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    fetchedReports.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setAiReports(fetchedReports);
-                }, handleFirestoreError);
-
-                const unsubAliases = onSnapshot(aliasesRef, (snap) => {
-                    const fetchedAliases = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setAliases(fetchedAliases);
-                }, handleFirestoreError);
-
-                const unsubScripts = onSnapshot(scriptsRef, (snap) => {
-                    const fetchedScripts = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    fetchedScripts.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setScripts(fetchedScripts);
-                }, handleFirestoreError);
-
-                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); unsubAliases(); unsubScripts(); };
+                return () => unsubs.forEach(unsub => unsub());
             }, [user]);
 
             const handleLogin = async () => {
                 setLoginError("");
                 try {
                     const result = await signInWithPopup(auth, provider);
-                    if (!isAllowedUser(result.user)) {
-                        await signOut(auth);
-                        setUser(null);
-                        setLoginError(`Acceso denegado. Esta aplicación solo está autorizada para ${ALLOWED_EMAIL}.`);
-                    }
-                } catch (error) {
-                    console.error(error);
-                    setLoginError("Error al iniciar sesión: " + error.message);
-                }
+                    if (!isAllowedUser(result.user)) { await signOut(auth); setUser(null); setLoginError(`Acceso denegado.`); }
+                } catch (error) { setLoginError("Error al iniciar sesión: " + error.message); }
             };
-
-            const handleLogout = () => { signOut(auth); };
+            const handleLogout = () => signOut(auth);
 
             const purgeOldData = async () => {
-                showConfirm("¿Estás seguro de eliminar todos los posts y comentarios de hace más de 3 meses? Esto reducirá tus lecturas en Firebase y no se puede deshacer.", async () => {
+                showConfirm("¿Estás seguro de eliminar todos los posts y comentarios de hace más de 3 meses?", async () => {
                     setIsPurging(true);
-                    const threeMonthsAgo = new Date();
-                    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-
+                    const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
                     try {
-                        const oldPosts = posts.filter(p => p.createdAt && p.createdAt.toDate() < threeMonthsAgo);
-                        const oldComments = comments.filter(c => c.createdAt && c.createdAt.toDate() < threeMonthsAgo);
-
-                        for (const p of oldPosts) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', p.id));
-                        for (const c of oldComments) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
-
-                        showAlert(`Mantenimiento completado: Se eliminaron ${oldPosts.length} posts y ${oldComments.length} comentarios viejos.`);
-                    } catch(e) { setErrorMsg("Error purgando datos."); }
-                    finally { setIsPurging(false); }
+                        const oldP = posts.filter(p => p.createdAt && p.createdAt.toDate() < threeMonthsAgo);
+                        const oldC = comments.filter(c => c.createdAt && c.createdAt.toDate() < threeMonthsAgo);
+                        for (const p of oldP) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', p.id));
+                        for (const c of oldC) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
+                        showAlert(`Se eliminaron ${oldP.length} posts y ${oldC.length} comentarios viejos.`);
+                    } catch(e) { setErrorMsg("Error purgando datos."); } finally { setIsPurging(false); }
                 });
             };
 
@@ -382,781 +284,243 @@
                 if (!newStrategyText.trim()) return;
                 setIsSavingStrategy(true);
                 try {
-                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'strategies'), {
-                        text: newStrategyText.trim(),
-                        createdAt: serverTimestamp()
-                    });
-                    setNewStrategyText("");
-                    setStrategySuccessMsg("¡Instrucción guardada exitosamente!");
-                    setTimeout(() => setStrategySuccessMsg(""), 3000);
-                } catch (err) { setErrorMsg("Error al guardar la estrategia."); } 
-                finally { setIsSavingStrategy(false); }
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'strategies'), { text: newStrategyText.trim(), createdAt: serverTimestamp() });
+                    setNewStrategyText(""); setStrategySuccessMsg("¡Guardada!"); setTimeout(() => setStrategySuccessMsg(""), 3000);
+                } catch (err) { setErrorMsg("Error al guardar."); } finally { setIsSavingStrategy(false); }
             };
 
-            const deleteStrategy = async (id) => {
-                showConfirm("¿Estás seguro de eliminar esta instrucción?", async () => {
-                    try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', id)); } 
-                    catch (err) { setErrorMsg("Error al eliminar la estrategia."); }
-                });
-            };
-
-            const startEditingStrategy = (strategy) => {
-                setEditingStrategyId(strategy.id);
-                setEditingStrategyText(strategy.text);
-            };
-
+            const deleteStrategy = (id) => showConfirm("¿Eliminar instrucción?", () => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', id)));
             const saveEditedStrategy = async () => {
                 if (!editingStrategyText.trim()) return;
-                try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', editingStrategyId), {
-                        text: editingStrategyText.trim()
-                    });
-                    setEditingStrategyId(null);
-                    setEditingStrategyText("");
-                } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
+                try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'strategies', editingStrategyId), { text: editingStrategyText.trim() }); setEditingStrategyId(null); } catch (err) { setErrorMsg("Error."); }
             };
 
             const openAliasModal = (originalName) => {
-                const safeName = (originalName || "Desconocido").trim();
-                const existing = aliases.find(a => (a.originalName || "").toLowerCase() === safeName.toLowerCase());
-                setTempAliasOriginal(safeName);
-                setTempAliasPreferred(existing ? (existing.preferredName || "") : "");
+                const existing = aliases.find(a => (a.originalName||"").toLowerCase() === (originalName||"").toLowerCase());
+                setTempAliasOriginal(originalName || "Usuario Desconocido");
+                setTempAliasPreferred(existing ? existing.preferredName : "");
                 setIsAliasModalOpen(true);
             };
 
             const saveAlias = async () => {
-                const preferred = (tempAliasPreferred || "").trim();
-                if (!preferred) return;
-                
+                if (!tempAliasPreferred.trim()) return;
                 try {
-                    const safeOriginal = (tempAliasOriginal || "Desconocido").trim();
-                    const existing = aliases.find(a => (a.originalName || "").toLowerCase() === safeOriginal.toLowerCase());
-                    
-                    if (existing) {
-                        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'user_aliases', existing.id), {
-                            preferredName: preferred,
-                            updatedAt: serverTimestamp()
-                        });
-                    } else {
-                        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'user_aliases'), {
-                            originalName: safeOriginal,
-                            preferredName: preferred,
-                            createdAt: serverTimestamp()
-                        });
-                    }
-                    setIsAliasModalOpen(false);
-                } catch (err) { 
-                    setErrorMsg("Error al guardar alias: " + (err.message || "Error desconocido")); 
-                }
-            };
-
-            const startEditingComment = (comment) => {
-                setEditingCommentId(comment.id);
-                setEditingCommentText(comment.generatedResponse);
+                    const ex = aliases.find(a => (a.originalName||"").toLowerCase() === tempAliasOriginal.toLowerCase());
+                    if (ex) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'user_aliases', ex.id), { preferredName: tempAliasPreferred.trim(), updatedAt: serverTimestamp() });
+                    else await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'user_aliases'), { originalName: tempAliasOriginal.trim(), preferredName: tempAliasPreferred.trim(), createdAt: serverTimestamp() });
+                    setIsAliasModalOpen(false); showAlert("Alias guardado exitosamente.");
+                } catch (err) { setErrorMsg("Error alias."); }
             };
 
             const saveEditedResponse = async (commentId) => {
                 if (!editingCommentText.trim()) return;
-                try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { 
-                        generatedResponse: editingCommentText.trim(),
-                        status: 'editado'
-                    });
-                    setEditingCommentId(null);
-                    setEditingCommentText("");
-                } catch (error) { setErrorMsg("Error al guardar la respuesta editada."); }
+                try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { generatedResponse: editingCommentText.trim(), status: 'editado' }); setEditingCommentId(null); } catch (e) { setErrorMsg("Error al guardar."); }
             };
-
-            const changeCommentStatus = async (commentId, newStatus) => {
-                try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { 
-                        status: newStatus 
-                    });
-                } catch (error) { console.error("Error cambiando estado:", error); }
-            };
-
+            const changeCommentStatus = async (commentId, status) => { try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', commentId), { status }); } catch(e){} };
+            
             const handleCopy = (id, text) => {
                 if (copyToClipboard(text)) {
-                    setCopiedId(id);
-                    setTimeout(() => {
-                        setCopiedId(null);
-                        changeCommentStatus(id, 'copiado');
-                        setRevealedCopiedCommentIds(prev => prev.filter(cId => cId !== id));
-                    }, 800);
+                    setCopiedId(id); setTimeout(() => { setCopiedId(null); changeCommentStatus(id, 'copiado'); setRevealedCopiedCommentIds(p => p.filter(c => c !== id)); }, 800);
                 }
             };
 
             const createNewPost = async () => {
                 if (!newPostText.trim()) return;
                 try {
-                    const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'posts'), {
-                        text: newPostText.trim(),
-                        context: "", 
-                        postInstruction: "",
-                        categories: ["Social"], 
-                        createdAt: serverTimestamp()
-                    });
-                    setActivePostId(docRef.id);
-                    setNewPostText("");
+                    const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'posts'), { text: newPostText.trim(), context: "", postInstruction: "", categories: ["Social"], createdAt: serverTimestamp() });
+                    setActivePostId(docRef.id); setNewPostText("");
                     if (window.innerWidth < 1024) setIsSidebarOpen(false);
                 } catch (err) { setErrorMsg("Error al crear la publicación."); }
             };
 
-            const deletePost = async (postId, e) => {
+            const deletePost = (postId, e) => {
                 if (e) e.stopPropagation();
-                showConfirm("¿Estás seguro de eliminar esta publicación y todas sus respuestas? Esta acción no se puede deshacer.", async () => {
+                showConfirm("¿Eliminar publicación y respuestas?", async () => {
                     try {
-                        const associatedComments = comments.filter(c => c.postId === postId);
-                        for (const c of associatedComments) {
-                            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
-                        }
-                        
+                        const rel = comments.filter(c => c.postId === postId);
+                        for (const c of rel) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', c.id));
                         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId));
-                        
-                        if (activePostId === postId) {
-                            setActivePostId(null);
-                            setCurrentView('manager');
-                        }
-                    } catch (err) {
-                        setErrorMsg("Error al eliminar la publicación.");
-                    }
+                        if (activePostId === postId) { setActivePostId(null); setCurrentView('manager'); }
+                    } catch(err) { setErrorMsg("Error al eliminar."); }
                 });
             };
 
-            const openContextModal = () => {
-                const activePost = posts.find(p => p.id === activePostId);
-                if (activePost) {
-                    setTempContextText(activePost.context || "");
-                    setTempPostInstruction(activePost.postInstruction || "");
-                    setIsContextModalOpen(true);
-                }
-            };
-
             const savePostContext = async () => {
-                try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePostId), { 
-                        context: tempContextText,
-                        postInstruction: tempPostInstruction
-                    });
-                    setIsContextModalOpen(false);
-                } catch (err) { setErrorMsg("Error al guardar el contexto."); }
+                try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', activePostId), { context: tempContextText, postInstruction: tempPostInstruction }); setIsContextModalOpen(false); showAlert("Contexto guardado."); } catch(err){}
             };
 
-            const togglePostCategory = async (postId, categoryName, currentCategories) => {
-                try {
-                    let newCategories = [...currentCategories];
-                    if (newCategories.includes(categoryName)) {
-                        newCategories = newCategories.filter(c => c !== categoryName);
-                    } else {
-                        newCategories.push(categoryName);
-                    }
-                    if (newCategories.length === 0) newCategories = ["Social"];
-                    
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId), { 
-                        categories: newCategories,
-                        category: null 
-                    });
-                } catch (err) { setErrorMsg("Error al actualizar categorías."); }
+            const togglePostCategory = async (postId, cat, curr) => {
+                try { let n = [...curr]; if(n.includes(cat)) n=n.filter(c=>c!==cat); else n.push(cat); if(!n.length) n=["Social"]; await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId), { categories: n }); } catch(err){}
             };
 
             const executeWithApiKey = (actionCallback) => {
                 const key = localStorage.getItem('gemini_api_key');
-                if (!key) {
-                    setPendingAction(() => actionCallback); 
-                    setIsApiModalOpen(true);
-                } else { 
-                    actionCallback(key); 
-                }
+                if (!key) { setPendingAction(() => actionCallback); setIsApiModalOpen(true); } 
+                else { actionCallback(key); }
             };
-
             const saveApiKeyAndExecute = () => {
-                const cleanKey = tempApiKey.trim().replace(/^['"]|['"]$/g, "");
-                if(cleanKey) {
-                    localStorage.setItem('gemini_api_key', cleanKey);
-                    setIsApiModalOpen(false);
-                    if(pendingAction) {
-                        pendingAction(cleanKey);
-                        setPendingAction(null);
-                    }
-                }
+                const k = tempApiKey.trim();
+                if(k) { localStorage.setItem('gemini_api_key', k); setIsApiModalOpen(false); if(pendingAction) { pendingAction(k); setPendingAction(null); } }
             };
 
-            const runGenerateResponses = async (currentApiKey) => {
-                setIsGenerating(true);
-                setErrorMsg("");
+            const runGenerateResponses = async (apiKey) => {
+                setIsGenerating(true); setErrorMsg("");
                 const activePost = posts.find(p => p.id === activePostId);
                 const activeCategories = getPostCategories(activePost);
                 
-                let categoryInstructions = activeCategories.map(cat => {
+                let catInst = activeCategories.map(cat => {
                     switch(cat) {
-                        case 'Social': return "- SOCIAL: Publicación de cercanía ciudadana, comunidad, territorio, causas sociales o interacción cotidiana. Responder con calidez, claridad y naturalidad. Evitar sonar genérico, vacío o robótico.";
-                        case 'Familiar': return "- FAMILIAR: Respuestas muy cortas, cálidas, humanas y sencillas. Idealmente de 1 a 10 palabras. Puede usar emojis cálidos. Cero confrontación.";
-                        case 'Legislativa': return "- LEGISLATIVA: Responder con seriedad institucional, claridad y sustento. Puede usar lenguaje parlamentario o jurídico sencillo, sin inventar datos. Mantener tono profesional.";
-                        case 'Política': return "- POLÍTICA: Responder con firmeza, contraste y claridad política. Tono directo, de oposición, pero siempre respetuoso. No insultar, no acusar sin evidencia y no inventar datos.";
+                        case 'Social': return "- SOCIAL: Cercanía ciudadana. Responder con calidez. Evitar sonar robótico.";
+                        case 'Familiar': return "- FAMILIAR: Respuestas muy cortas, cálidas (1-10 palabras). Cero confrontación.";
+                        case 'Legislativa': return "- LEGISLATIVA: Seriedad institucional, sin inventar datos.";
+                        case 'Política': return "- POLÍTICA: Firmeza, contraste. No insultar ni acusar sin evidencia.";
                         default: return "";
                     }
                 }).join('\n');
 
-                const activeAliasesText = aliases.length > 0 
-                    ? `\nMEMORIA DE ALIAS CONOCIDOS:\n${aliases.map(a => `- ${a.originalName} -> Prefiere que lo llamen: ${a.preferredName}`).join('\n')}\n(Usa estos alias de forma natural si el usuario coincide. NO inventes alias, usa solo los de esta lista).` 
-                    : "";
+                const aliasTxt = aliases.length > 0 ? `\nMEMORIA ALIAS:\n${aliases.map(a => `- ${a.originalName} -> Prefiere: ${a.preferredName}`).join('\n')}` : "";
+                const stratTxt = strategies.map(s => `- ${s.text}`).join('\n');
+                const postCtx = activePost.context?.trim() ? `\nCONTEXTO POST:\n${activePost.context}` : "";
+                const postInst = activePost.postInstruction?.trim() ? `\nINSTRUCCIÓN POST:\n${activePost.postInstruction}` : "";
 
-                const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
-                
-                const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST:\n${activePost.context}` : "";
-                const postSpecificInstruction = activePost.postInstruction?.trim() ? `\nINSTRUCCIÓN ESPECÍFICA PARA ESTA PUBLICACIÓN (PRIORIDAD ALTA):\n${activePost.postInstruction}` : "";
-                const globalContext = combinedStrategies ? `\nESTRATEGIAS GLOBALES ACTIVAS:\n${combinedStrategies}` : "";
-
-                const systemPrompt = `
-                    Eres la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Estás respondiendo DIRECTAMENTE y EN PRIMERA PERSONA a los comentarios que te dejan los ciudadanos en tus redes sociales.
-                    
-                    ENFOQUES ACTIVOS DE LA PUBLICACIÓN (Combina estos estilos):
-                    ${categoryInstructions}
-                    
-                    ${postContext}
-                    ${postSpecificInstruction}
-                    ${activeAliasesText}
-                    ${globalContext}
-                    
-                    REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
-                    1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Estoy trabajando") o plural inclusivo ("Estamos"). ESTÁ ESTRICTAMENTE PROHIBIDO responder en tercera persona. NUNCA digas "La senadora agradece...", "De parte de la senadora" o "El equipo de Ivideliza".
-                    2. CRÍTICO Y OBLIGATORIO: Nunca uses la misma estructura de frase dos veces seguidas en este bloque de respuestas. Varía tu vocabulario (ej. "Gracias", "Te agradezco", "Qué gusto leerte", "Valoro tu mensaje") para que ninguna respuesta se parezca a la anterior. ¡Sé natural y orgánica!
-                    3. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto, no la menciones.
-                    4. No prometas resolver casos individuales ni gestiones específicas.
-                    5. No hagas acusaciones directas sin evidencia explícita en el contexto.
-                    6. Mantén las respuestas de máximo 1 o 2 frases, salvo que el enfoque Legislativo o Político requiera un poco más de desarrollo.
-                    7. No inicies con 'Hola [Nombre]'. Usa el nombre o alias solo si se siente natural en la frase.
-                    8. CLASIFICACIÓN DE SENTIMIENTO OBLIGATORIA (Elige solo una de estas 6):
-                       - 'Positivo': apoyo, felicitación, acuerdo.
-                       - 'Neutro': comentario informativo, simple.
-                       - 'Reclamo ciudadano': queja legítima sobre un problema público, inconformidad ciudadana, sin ataque directo a la senadora. Responde con empatía.
-                       - 'Crítica externa': comentario negativo contra el gobierno, autoridades, partidos u otros actores, pero NO dirigido contra la senadora. (No lo clasifiques como Negativo). Responde con contraste político si aplica.
-                       - 'Negativo': insulto, burla o ataque DIRECTO hacia ti (la senadora) o tu trabajo.
-                       - 'Escalar': denuncia grave, amenaza, solicitud de auxilio, violencia o tema que deba revisar un humano.
-                `;
-
-                const userPrompt = `PUBLICACIÓN:\n"${activePost.text}"\n\nCOMENTARIOS A RESPONDER:\n${newCommentsText}`;
+                const sysPrompt = `Eres Senadora Ivideliza Reyes (Nayarit, PAN). Respondes EN PRIMERA PERSONA ("Yo", "Agradezco"). NUNCA tercera persona.
+                ENFOQUES: ${catInst}\n${postCtx}\n${postInst}\n${aliasTxt}\nESTRATEGIAS:\n${stratTxt}
+                REGLAS: Varía vocabulario. No inventes datos. Respuestas cortas.
+                SENTIMIENTOS (elige 1): Positivo, Neutro, Reclamo ciudadano, Crítica externa, Negativo, Escalar.`;
 
                 const payload = {
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: [{ parts: [{ text: `POST:\n"${activePost.text}"\nCOMENTARIOS:\n${newCommentsText}` }] }],
+                    systemInstruction: { parts: [{ text: sysPrompt }] },
                     generationConfig: {
                         responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "ARRAY",
-                            items: {
-                                type: "OBJECT",
-                                properties: {
-                                    nombreUsuario: { type: "STRING" },
-                                    comentarioOriginal: { type: "STRING" },
-                                    sentimiento: { type: "STRING", description: "Opciones: Positivo, Neutro, Reclamo ciudadano, Crítica externa, Negativo, Escalar" },
-                                    razonSentimiento: { type: "STRING", description: "Breve justificación de por qué elegiste este sentimiento" },
-                                    requiereRevision: { type: "BOOLEAN" },
-                                    respuestaGenerada: { type: "STRING" },
-                                    recomendacion: { type: "STRING", description: "Ej: Responder, No responder, Revisar antes, Responder institucional" },
-                                    usarAliasDetectado: { type: "STRING", description: "Si usaste un alias de la lista, indícalo aquí, sino déjalo vacío" }
-                                },
-                                required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada", "recomendacion"]
-                            }
-                        }
+                        responseSchema: { type: "ARRAY", items: { type: "OBJECT", properties: { nombreUsuario: { type: "STRING" }, comentarioOriginal: { type: "STRING" }, sentimiento: { type: "STRING" }, razonSentimiento: { type: "STRING" }, requiereRevision: { type: "BOOLEAN" }, respuestaGenerada: { type: "STRING" }, recomendacion: { type: "STRING" }, usarAliasDetectado: { type: "STRING" } }, required: ["nombreUsuario", "comentarioOriginal", "sentimiento", "respuestaGenerada", "recomendacion"] } }
                     }
                 };
 
                 try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!rawJsonText) throw new Error("Asegúrate de que la API key de Gemini sea válida.");
-                    
-                    // Limpieza de Markdown en caso de que Gemini ignore el schema
-                    const cleanJson = rawJsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const generatedItems = JSON.parse(cleanJson);
-                    
-                    for (const item of generatedItems) {
+                    const data = await fetchGeminiWithRetry(payload, apiKey);
+                    const items = parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text);
+                    for (const item of items) {
                         await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'comments'), {
-                            postId: activePostId,
-                            nombreUsuario: item.nombreUsuario || 'Desconocido',
-                            originalComment: item.comentarioOriginal,
-                            sentiment: item.sentimiento,
-                            sentimentReason: item.razonSentimiento || "",
-                            requiresReview: item.requiereRevision || false,
-                            generatedResponse: item.respuestaGenerada,
-                            recommendation: item.recomendacion || "",
-                            usedAlias: item.usarAliasDetectado || "",
-                            status: "pendiente",
-                            createdAt: serverTimestamp()
+                            postId: activePostId, nombreUsuario: item.nombreUsuario || 'Desconocido', originalComment: item.comentarioOriginal, sentiment: item.sentimiento, sentimentReason: item.razonSentimiento || "", requiresReview: item.requiereRevision || false, generatedResponse: item.respuestaGenerada, recommendation: item.recomendacion || "", usedAlias: item.usarAliasDetectado || "", status: "pendiente", createdAt: serverTimestamp()
                         });
                     }
                     setNewCommentsText("");
-                } catch (err) {
-                    console.error(err);
-                    setErrorMsg("Error al generar respuestas: " + (err.message || "Revisa la API Key."));
-                } finally { setIsGenerating(false); }
+                } catch (err) { setErrorMsg("Error IA: " + err.message); } finally { setIsGenerating(false); }
             };
 
-            const handleGenerateResponses = () => {
-                if (!newCommentsText.trim() || !activePostId || isGenerating) return;
-                executeWithApiKey(runGenerateResponses);
-            };
-
-            const runRegenerateSingleResponse = async (currentApiKey) => {
+            const runRegenerateSingleResponse = async (apiKey) => {
                 if (!regeneratingCommentId || !regenerateInstruction.trim()) return;
-                setIsRegeneratingSingle(true);
-                setErrorMsg("");
-
+                setIsRegeneratingSingle(true); setErrorMsg("");
                 const commentToUpdate = comments.find(c => c.id === regeneratingCommentId);
-                const activePost = posts.find(p => p.id === commentToUpdate?.postId);
+                const activePost = posts.find(p => p.id === commentToUpdate.postId);
                 
-                if(!commentToUpdate || !activePost) {
-                    setErrorMsg("No se encontró el contexto del comentario original.");
-                    setIsRegeneratingSingle(false);
-                    return;
-                }
-
-                const systemPrompt = `
-                    Eres la Senadora Ivideliza Reyes Hernández, Senadora por Nayarit (PAN). Estás respondiendo DIRECTAMENTE y EN PRIMERA PERSONA a los ciudadanos en tus redes sociales.
-                    Tu tarea ahora es REESCRIBIR una respuesta tuya a un comentario de Facebook.
-                    A tu equipo de comunicación no le gustó la respuesta anterior y te ha proporcionado una INSTRUCCIÓN ESPECÍFICA para que tú (la senadora) mejores tu redacción.
-                    
-                    REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
-                    1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Mi compromiso"). ESTÁ ESTRICTAMENTE PROHIBIDO hablar de ti misma en tercera persona. NUNCA uses frases como "La senadora piensa", "De parte de la senadora" o "El equipo de la senadora".
-                    2. VARIEDAD: Varía tu vocabulario para no sonar repetitiva, robótica o automatizada.
-                    3. DEBES obedecer la instrucción específica proporcionada para mejorar la respuesta.
-                    4. Mantén tu tono cercano, firme y político, según corresponda.
-                    5. No inventes datos que no se te proporcionen.
-                `;
-
-                const userPrompt = `
-                    PUBLICACIÓN ORIGINAL (Contexto):
-                    "${activePost.text}"
-
-                    COMENTARIO DEL CIUDADANO (${commentToUpdate.nombreUsuario}):
-                    "${commentToUpdate.originalComment}"
-
-                    RESPUESTA GENERADA ANTERIORMENTE (La que hay que mejorar):
-                    "${commentToUpdate.generatedResponse}"
-
-                    -------------------------------------
-                    INSTRUCCIÓN ESPECÍFICA DE MEJORA:
-                    "${regenerateInstruction}"
-                    -------------------------------------
-
-                    Redacta UNA nueva respuesta mejorada aplicando fielmente la instrucción específica, pero sin perder de vista los contextos y estrategias globales proporcionadas.
-                `;
+                const sysPrompt = `Eres Senadora Ivideliza Reyes. REESCRIBE tu respuesta obedeciendo la instrucción dada. PRIMERA PERSONA ("Yo"). No inventes datos.`;
+                const usrPrompt = `POST:\n"${activePost.text}"\nCOMENTARIO (${commentToUpdate.nombreUsuario}):\n"${commentToUpdate.originalComment}"\nRESPUESTA ACTUAL:\n"${commentToUpdate.generatedResponse}"\nINSTRUCCIÓN DE MEJORA:\n"${regenerateInstruction}"`;
 
                 const payload = {
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                nuevaRespuesta: { type: "STRING", description: "La nueva respuesta reescrita basándose en la instrucción." }
-                            },
-                            required: ["nuevaRespuesta"]
-                        }
-                    }
+                    contents: [{ parts: [{ text: usrPrompt }] }], systemInstruction: { parts: [{ text: sysPrompt }] },
+                    generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { nuevaRespuesta: { type: "STRING" } }, required: ["nuevaRespuesta"] } }
                 };
 
                 try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!rawJsonText) throw new Error("Error al comunicarse con Gemini.");
-                    
-                    const cleanJson = rawJsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const result = JSON.parse(cleanJson);
-                    
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', regeneratingCommentId), { 
-                        generatedResponse: result.nuevaRespuesta,
-                        status: 'editado' 
-                    });
-                    
-                    setRegeneratingCommentId(null);
-                    setRegenerateInstruction("");
-                } catch (err) {
-                    console.error(err);
-                    setErrorMsg("Error al regenerar la respuesta: " + (err.message || "Intenta nuevamente."));
-                } finally { 
-                    setIsRegeneratingSingle(false); 
-                }
+                    const data = await fetchGeminiWithRetry(payload, apiKey);
+                    const result = parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text);
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'comments', regeneratingCommentId), { generatedResponse: result.nuevaRespuesta, status: 'editado' });
+                    setRegeneratingCommentId(null); setRegenerateInstruction("");
+                } catch (err) { setErrorMsg("Error: " + err.message); } finally { setIsRegeneratingSingle(false); }
             };
 
-            const handleRegenerateExecute = () => {
-                executeWithApiKey(runRegenerateSingleResponse);
-            };
-
-            const runGenerateDrafts = async (currentApiKey) => {
-                setIsGeneratingDrafts(true);
-                const latestReport = aiReports[0]; 
-                
-                const prompt = `
-                    Actúa como Consultor Político y Copywriter para la Senadora Ivideliza Reyes.
-                    Contexto y temperatura social (del último reporte mensual): ${latestReport ? JSON.stringify(latestReport.report) : 'Sin datos previos. Genera posts orgánicos y proactivos.'}
-                    
-                    Redacta 3 borradores de publicaciones para Facebook.
-                    Deben ser altamente atractivos, cercanos a la ciudadanía y responder a los temas de interés actuales.
-                    
-                    Devuelve el resultado en formato JSON estricto con un array "borradores", cada uno con "tema" y "texto".
-                `;
-
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                borradores: { 
-                                    type: "ARRAY", 
-                                    items: { 
-                                        type: "OBJECT", 
-                                        properties: { tema: { type: "STRING" }, texto: { type: "STRING" } } 
-                                    } 
-                                }
-                            }
-                        }
-                    }
-                };
-
-                try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const cleanJson = data.candidates?.[0]?.content?.parts?.[0]?.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const result = JSON.parse(cleanJson);
-                    setDraftsList(result.borradores);
-                    setIsDraftModalOpen(true);
-                } catch (err) { setErrorMsg("Error al generar borradores."); } 
-                finally { setIsGeneratingDrafts(false); }
-            };
-            const generateDrafts = () => executeWithApiKey(runGenerateDrafts);
-
-            // --- FUNCIONES MÓDULO GUIONES ---
-
-            const toggleScriptCategory = (categoryName) => {
-                let newCats = [...scriptCategories];
-                if (newCats.includes(categoryName)) {
-                    newCats = newCats.filter(c => c !== categoryName);
-                } else {
-                    newCats.push(categoryName);
-                }
-                if (newCats.length === 0) newCats = ["Legislativo"]; // Default
-                setScriptCategories(newCats);
-            };
-
-            const runGenerateScript = async (currentApiKey) => {
-                if (!scriptTopic.trim()) return;
-                setIsGeneratingScript(true);
-                setErrorMsg("");
-
-                const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
-
-                const systemPrompt = `
-                    Eres el guionista principal y estratega de comunicación de la Senadora Ivideliza Reyes Hernández (Senadora por Nayarit, PAN).
-                    Tu trabajo es escribir un guion para un video corto (Clip/Reel) basado en la solicitud del usuario.
-                    
-                    REGLAS OBLIGATORIAS:
-                    1. NO MIENTAS, NO INVENTES: Todo dato duro, cifra, nombre de ley, fecha o suceso histórico que menciones debe ser verídico. Utiliza la herramienta de búsqueda de Google (Grounding) que tienes activa para verificar información antes de escribir.
-                    2. TONO Y ESTILO: Habla en primera persona ("Yo", "Hemos", "Desde el Senado"). Mantén un tono acorde a la Senadora: firme, directo, cercano a la gente, y (cuando aplique) crítico con el oficialismo, siempre con respeto.
-                    3. ESTRUCTURA DE GUION:
-                       - [GANCHO]: 1 o 2 frases impactantes al inicio.
-                       - [DESARROLLO]: Explicación breve del tema, datos reales (verificados).
-                       - [LLAMADO A LA ACCIÓN / CIERRE]: Cierre fuerte, compromiso o invitación.
-                    4. ESTRATEGIAS GLOBALES A CONSIDERAR (Si aplican al tema):
-                    ${combinedStrategies}
-                `;
-
-                const userPrompt = `
-                    TEMA DEL VIDEO: ${scriptTopic}
-                    
-                    ENFOQUES (Personalidad del video): ${scriptCategories.join(", ")}
-                    
-                    INSTRUCCIONES ADICIONALES: ${scriptConstraints || "Ninguna adicional."}
-                    
-                    Por favor, redacta el guion asegurándote de que la información sea real y actual. NO uses marcadores de tiempo muy largos, que sea para un video ágil.
-                `;
-
-                const payload = {
-                    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                    tools: [{ "google_search": {} }] // ACTIVANDO GROUNDING PARA EVITAR ALUCINACIONES
-                };
-
-                try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (!generatedText) throw new Error("No se pudo generar el guion.");
-
-                    const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'scripts'), {
-                        topic: scriptTopic.trim(),
-                        categories: scriptCategories,
-                        constraints: scriptConstraints,
-                        content: generatedText,
-                        createdAt: serverTimestamp()
-                    });
-
-                    setActiveScriptId(docRef.id);
-                    setEditingScriptText(generatedText);
-                    setScriptTopic("");
-                    setScriptConstraints("");
-                    
-                } catch (err) {
-                    console.error(err);
-                    setErrorMsg(`Error al generar guion: ${err.message}`);
-                } finally {
-                    setIsGeneratingScript(false);
-                }
-            };
-            const handleGenerateScript = () => executeWithApiKey(runGenerateScript);
-
-            const saveEditedScript = async () => {
-                if (!activeScriptId || !editingScriptText.trim()) return;
-                try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'scripts', activeScriptId), {
-                        content: editingScriptText
-                    });
-                    showAlert("Guion guardado exitosamente.");
-                } catch (error) {
-                    setErrorMsg("Error al guardar el guion.");
-                }
-            };
-
-            const deleteScript = async (scriptId, e) => {
-                if (e) e.stopPropagation();
-                showConfirm("¿Estás seguro de eliminar este guion?", async () => {
-                    try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'scripts', scriptId));
-                        if (activeScriptId === scriptId) {
-                            setActiveScriptId(null);
-                        }
-                    } catch (err) {
-                        setErrorMsg("Error al eliminar el guion.");
-                    }
-                });
-            };
-
-            const handleCopyScript = () => {
-                if (copyToClipboard(editingScriptText)) {
-                    setCopiedScriptId(true);
-                    setTimeout(() => setCopiedScriptId(false), 2000);
-                }
-            };
-
-            const runRefineScript = async (currentApiKey) => {
-                if (!activeScriptId || !scriptRefineInstruction.trim() || !editingScriptText.trim()) return;
-                setIsRefiningScript(true);
-                setErrorMsg("");
-
-                const userPrompt = `
-                    TEXTO DEL GUION ACTUAL:
-                    "${editingScriptText}"
-
-                    INSTRUCCIÓN DE CAMBIO:
-                    "${scriptRefineInstruction}"
-
-                    Por favor, reescribe el guion aplicando LA INSTRUCCIÓN, pero manteniendo la estructura de guion y la personalidad de la Senadora. No inventes datos. Devuelve SOLO el texto del nuevo guion.
-                `;
-
-                const payload = {
-                    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                };
-
-                try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const newText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (!newText) throw new Error("Error al modificar.");
-
-                    setEditingScriptText(newText);
-                    setScriptRefineInstruction("");
-                    
-                    // Auto save
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'scripts', activeScriptId), {
-                        content: newText
-                    });
-                } catch (err) {
-                    console.error(err);
-                    setErrorMsg(`Error al refinar guion: ${err.message}`);
-                } finally {
-                    setIsRefiningScript(false);
-                }
-            };
-            const handleRefineScript = () => executeWithApiKey(runRefineScript);
-
-            const runAdaptScript = async (currentApiKey) => {
-                if (!activeScriptId || !editingScriptText.trim()) return;
-                setIsAdaptingScript(true);
-                setErrorMsg("");
-
-                const systemPrompt = `
-                    Actúa como un corrector de estilo profesional y copywriter político.
-                    El usuario te dará un borrador de guion que ha editado a mano. 
-                    TU ÚNICA TAREA ES:
-                    1. Corregir errores ortográficos o gramaticales.
-                    2. Mejorar la fluidez y conectar las ideas (cohesión y coherencia) para que se lea natural en voz alta.
-                    
-                    REGLAS ESTRICTAS:
-                    - NO agregues nueva información.
-                    - NO cambies el significado ni el mensaje principal.
-                    - NO inventes datos.
-                    - Mantén la misma longitud y tono general.
-                    - Devuelve SOLO el texto corregido.
-                `;
-
-                const payload = {
-                    contents: [{ role: 'user', parts: [{ text: editingScriptText }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] }
-                };
-
-                try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const newText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (!newText) throw new Error("Error al adecuar el texto.");
-
-                    setEditingScriptText(newText);
-                    
-                    // Auto save
-                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'scripts', activeScriptId), {
-                        content: newText
-                    });
-                } catch (err) {
-                    console.error(err);
-                    setErrorMsg(`Error al adecuar guion: ${err.message}`);
-                } finally {
-                    setIsAdaptingScript(false);
-                }
-            };
-            const handleAdaptScript = () => executeWithApiKey(runAdaptScript);
-
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
-            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-            const currentMonthName = monthNames[currentMonth];
-            
-            const monthlyPosts = posts.filter(p => {
-                if (!p.createdAt) return false;
-                const d = p.createdAt.toDate();
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
-
-            const monthlyComments = comments.filter(c => {
-                if (!c.createdAt) return false;
-                const d = c.createdAt.toDate();
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
+            const currentMonth = new Date().getMonth(); const currentYear = new Date().getFullYear(); const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]; const currentMonthName = monthNames[currentMonth];
+            const monthlyPosts = posts.filter(p => { if (!p.createdAt) return false; const d = p.createdAt.toDate(); return d.getMonth() === currentMonth && d.getFullYear() === currentYear; });
+            const monthlyComments = comments.filter(c => { if (!c.createdAt) return false; const d = c.createdAt.toDate(); return d.getMonth() === currentMonth && d.getFullYear() === currentYear; });
 
             let sentPos = 0, sentNeu = 0, sentRec = 0, sentCrit = 0, sentNeg = 0, sentEsc = 0;
-            monthlyComments.forEach(c => {
-                const s = c.sentiment || '';
-                if (s === 'Positivo') sentPos++;
-                else if (s === 'Neutro') sentNeu++;
-                else if (s === 'Reclamo ciudadano' || s === 'Reclamo') sentRec++;
-                else if (s === 'Crítica externa') sentCrit++;
-                else if (s === 'Escalar') sentEsc++;
-                else sentNeg++; 
-            });
+            monthlyComments.forEach(c => { const s = c.sentiment || ''; if (s === 'Positivo') sentPos++; else if (s === 'Neutro') sentNeu++; else if (s === 'Reclamo ciudadano' || s === 'Reclamo') sentRec++; else if (s === 'Crítica externa') sentCrit++; else if (s === 'Escalar') sentEsc++; else sentNeg++; });
 
-            const catCounts = { Social: 0, Familiar: 0, Legislativa: 0, Política: 0 };
-            monthlyPosts.forEach(p => { 
-                const cats = getPostCategories(p);
-                cats.forEach(c => { if(catCounts[c] !== undefined) catCounts[c]++; });
-            });
-            let topCat = "Ninguno";
-            let maxCount = 0;
-            for (const [cat, count] of Object.entries(catCounts)) {
-                if (count > maxCount) { maxCount = count; topCat = cat; }
-            }
-
-            const runGenerateReport = async (currentApiKey) => {
+            const runGenerateReport = async (apiKey) => {
                 setIsGeneratingReport(true);
-                
                 const sampleTexts = monthlyPosts.map(p => p.text).join(" | ").substring(0, 3000);
+                const prompt = `Analiza el mes de ${currentMonthName}. Posts: ${monthlyPosts.length}, Comentarios: ${monthlyComments.length}. Positivos:${sentPos}, Reclamos:${sentRec}, Críticas:${sentCrit}. Textos: ${sampleTexts}. Genera JSON con "temaPrincipal", "analisisSituacion", "propuestas" (Array 3 strings).`;
+                const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { temaPrincipal: { type: "STRING" }, analisisSituacion: { type: "STRING" }, propuestas: { type: "ARRAY", items: { type: "STRING" } } } } } };
+                try {
+                    const data = await fetchGeminiWithRetry(payload, apiKey);
+                    const result = parseJSON(data.candidates?.[0]?.content?.parts?.[0]?.text);
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ai_reports'), { title: `Reporte ${currentMonthName} ${currentYear}`, report: result, month: currentMonth, year: currentYear, createdAt: serverTimestamp() });
+                    showAlert("Reporte generado con éxito.");
+                } catch (err) { setErrorMsg("Error IA Reporte."); } finally { setIsGeneratingReport(false); }
+            };
 
-                const prompt = `
-                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes para el mes de ${currentMonthName} ${currentYear}.
-                    
-                    Datos del mes:
-                    - Publicaciones totales: ${monthlyPosts.length}
-                    - Desglose por enfoque (una publicación puede tener varios): ${JSON.stringify(catCounts)}
-                    - Comentarios totales recibidos: ${monthlyComments.length}
-                    - Sentimientos (Detalle estratégico):
-                        * Apoyo ciudadano (Positivo): ${sentPos}
-                        * Neutrales: ${sentNeu}
-                        * Reclamos ciudadanos (Atención necesaria): ${sentRec}
-                        * Críticas externas (Al gobierno u otros, no a ella): ${sentCrit}
-                        * Ataques directos a la senadora (Negativos): ${sentNeg}
-                        * Casos delicados (Escalar): ${sentEsc}
-                    
-                    Muestra de textos publicados: ${sampleTexts}
-
-                    Extrae y genera un JSON estricto con:
-                    1. "temaPrincipal": Cuál fue el tema más recurrente o importante.
-                    2. "analisisSituacion": Un párrafo sobre la temperatura ciudadana (distinguiendo entre los que se quejan del gobierno y los que atacan a la senadora).
-                    3. "propuestas": Array con 3 propuestas de mejora.
-                `;
+            const runGenerateScript = async (apiKey) => {
+                setIsGeneratingScript(true); setErrorMsg("");
+                const sysPrompt = `Eres guionista para la Senadora Ivideliza Reyes. Crea un guion para redes sociales. NO inventes datos, usa la herramienta de búsqueda en Google para verificar información. El guion debe tener Gancho, Desarrollo y Cierre.`;
+                const usrPrompt = `Tema principal: ${scriptTopic}\nEnfoques: ${scriptCategories.join(",")}\nOtras instrucciones: ${scriptConstraints}`;
 
                 const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                temaPrincipal: { type: "STRING" },
-                                analisisSituacion: { type: "STRING" },
-                                propuestas: { type: "ARRAY", items: { type: "STRING" } }
-                            }
-                        }
-                    }
+                    contents: [{ role: "user", parts: [{ text: usrPrompt }] }],
+                    systemInstruction: { parts: [{ text: sysPrompt }] },
+                    tools: [{ googleSearch: {} }] 
                 };
-
+                
                 try {
-                    const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const cleanJson = data.candidates?.[0]?.content?.parts?.[0]?.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const result = JSON.parse(cleanJson);
-                    
-                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ai_reports'), {
-                        title: `Reporte ${currentMonthName} ${currentYear}`,
-                        report: result,
-                        month: currentMonth,
-                        year: currentYear,
-                        createdAt: serverTimestamp()
+                    const data = await fetchGeminiWithRetry(payload, apiKey);
+                    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'scripts'), {
+                        topic: scriptTopic, categories: scriptCategories, constraints: scriptConstraints, content: txt, createdAt: serverTimestamp()
                     });
-                } catch (err) { setErrorMsg("Error al generar el reporte de IA."); } 
-                finally { setIsGeneratingReport(false); }
+                    setActiveScriptId(docRef.id); setEditingScriptText(txt);
+                    setScriptTopic(""); setScriptConstraints("");
+                } catch (err) { setErrorMsg("Error Guion: " + err.message); } finally { setIsGeneratingScript(false); }
             };
-            const generateAIReport = () => executeWithApiKey(runGenerateReport);
 
-            // Auto ocultar mensaje de error
-            useEffect(() => {
-                if (errorMsg) {
-                    const timer = setTimeout(() => setErrorMsg(""), 7000);
-                    return () => clearTimeout(timer);
-                }
-            }, [errorMsg]);
+            const runAdaptScript = async (apiKey) => {
+                if(!editingScriptText.trim()) return;
+                setIsAdaptingScript(true); setErrorMsg("");
+                const sysPrompt = `Revisa el siguiente texto. Corrige ortografía y mejora la fluidez (conecta las ideas para que suene natural). NO agregues información nueva, NO cambies el sentido y NO elimines datos clave. Devuelve SOLO el texto corregido.`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: editingScriptText }] }],
+                    systemInstruction: { parts: [{ text: sysPrompt }] }
+                };
+                try {
+                    const data = await fetchGeminiWithRetry(payload, apiKey);
+                    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    setEditingScriptText(txt);
+                    if(activeScriptId) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'scripts', activeScriptId), { content: txt });
+                    showAlert("Texto adecuado y guardado.");
+                } catch (err) { setErrorMsg("Error Adecuar: " + err.message); } finally { setIsAdaptingScript(false); }
+            };
+
+            const runRefineScript = async (apiKey) => {
+                if(!scriptRefineInstruction.trim()) return;
+                setIsRefiningScript(true); setErrorMsg("");
+                const sysPrompt = `Modifica el guion de acuerdo a la instrucción específica. Mantén el tono. Devuelve SOLO el guion modificado.`;
+                const usrPrompt = `GUION ACTUAL:\n${editingScriptText}\n\nINSTRUCCIÓN DE CAMBIO:\n${scriptRefineInstruction}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: usrPrompt }] }], systemInstruction: { parts: [{ text: sysPrompt }] }
+                };
+                try {
+                    const data = await fetchGeminiWithRetry(payload, apiKey);
+                    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    setEditingScriptText(txt); setScriptRefineInstruction("");
+                    if(activeScriptId) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'scripts', activeScriptId), { content: txt });
+                    showAlert("Guion refinado y guardado.");
+                } catch (err) { setErrorMsg("Error Refinar: " + err.message); } finally { setIsRefiningScript(false); }
+            };
+
 
             if (authLoading) return null; 
-
             if (!user) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-slate-100 relative z-10">
                         <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-200 m-4">
-                            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <Target className="w-10 h-10 text-blue-600" />
-                            </div>
+                            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><Target className="w-10 h-10 text-blue-600" /></div>
                             <h1 className="text-2xl font-black text-slate-800 mb-2">Gestor de Redes CMS</h1>
                             <p className="text-slate-500 mb-8 font-medium">Plataforma estratégica - Sen. Ivideliza Reyes</p>
-                            
-                            {loginError && (
-                                <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-200 text-left">
-                                    <AlertTriangle className="w-4 h-4 inline mr-2"/>
-                                    {loginError}
-                                </div>
-                            )}
-
+                            {loginError && <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-200 text-left"><AlertTriangle className="w-4 h-4 inline mr-2"/>{loginError}</div>}
                             <button onClick={handleLogin} className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 py-3 px-4 rounded-xl font-bold transition-all shadow-sm">
-                                <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
-                                Ingresar con Google
+                                <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg> Ingresar con Google
                             </button>
                         </div>
                     </div>
@@ -1167,45 +531,32 @@
             const activeCategories = getPostCategories(activePost);
             const activeComments = comments.filter(c => c.postId === activePostId);
             const commentBeingRegenerated = comments.find(c => c.id === regeneratingCommentId);
-            const activeScript = scripts.find(s => s.id === activeScriptId);
+            const actScript = scripts.find(s => s.id === activeScriptId);
 
             return (
                 <div className="flex h-screen overflow-hidden relative bg-slate-50 z-10">
                     
                     {}
-                    {/* SIDEBAR - Dinámico según la vista */}
                     {isSidebarOpen && <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
                     <aside className={`fixed lg:static inset-y-0 left-0 w-80 bg-white border-r border-slate-200 z-50 transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-                        
                         <div className="p-4 border-b border-slate-200 bg-blue-50/50">
-                            <h2 className="text-blue-800 font-bold text-lg flex items-center gap-2">
-                                <History className="w-5 h-5" /> 
-                                {currentView === 'scripts' ? 'Historial de Guiones' : 'Historial de Posts'}
-                            </h2>
+                            <h2 className="text-blue-800 font-bold text-lg flex items-center gap-2"><History className="w-5 h-5" /> {currentView === 'scripts' ? 'Historial Guiones' : 'Historial Posts'}</h2>
                         </div>
-                        
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         
                         {currentView === 'scripts' ? (
                             <>
-                                <button onClick={() => { setActiveScriptId(null); setIsSidebarOpen(false); }} className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed font-medium transition-colors ${!activeScriptId ? 'border-indigo-500 text-indigo-600 bg-indigo-50' : 'border-slate-300 text-slate-600 hover:border-indigo-400 hover:bg-indigo-50'}`}>
+                                <button onClick={() => { setActiveScriptId(null); setEditingScriptText(""); setIsSidebarOpen(false); }} className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed font-medium transition-colors ${!activeScriptId ? 'border-indigo-500 text-indigo-600 bg-indigo-50' : 'border-slate-300 text-slate-600 hover:border-indigo-400 hover:bg-indigo-50'}`}>
                                     <Plus className="w-5 h-5" /> Nuevo Guion
                                 </button>
                                 <div className="pt-4 space-y-2">
-                                    {scripts.map(script => (
-                                        <div key={script.id} className={`w-full text-left p-3 rounded-lg border transition-all relative group cursor-pointer ${activeScriptId === script.id ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
-                                            <div onClick={() => { setActiveScriptId(script.id); setEditingScriptText(script.content); setIsSidebarOpen(false); }}>
-                                                <p className="text-sm font-bold line-clamp-1 text-slate-700 pr-6">{script.topic}</p>
-                                                <p className="text-xs text-slate-500 line-clamp-1 mt-1">{script.content}</p>
-                                                <div className="text-[10px] text-slate-400 mt-2 flex justify-between items-center">
-                                                    <span className="font-semibold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">
-                                                        {(script.categories || []).join(' · ')}
-                                                    </span>
-                                                </div>
+                                    {scripts.map(s => (
+                                        <div key={s.id} className={`w-full text-left p-3 rounded-lg border transition-all relative group cursor-pointer ${activeScriptId === s.id ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                                            <div onClick={() => { setActiveScriptId(s.id); setEditingScriptText(s.content); setIsSidebarOpen(false); }}>
+                                                <p className="text-sm font-bold text-slate-700 pr-6 line-clamp-1">{s.topic}</p>
+                                                <p className="text-xs text-slate-500 mt-1 line-clamp-1">{s.content}</p>
                                             </div>
-                                            <button onClick={(e) => deleteScript(script.id, e)} className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100" title="Eliminar guion">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); showConfirm("¿Eliminar este guion?", () => deleteDoc(doc(db,'artifacts',appId,'users',user.uid,'scripts',s.id))); }} className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100" title="Eliminar guion"><Trash2 className="w-4 h-4" /></button>
                                         </div>
                                     ))}
                                 </div>
@@ -1223,15 +574,11 @@
                                             <div onClick={() => { setActivePostId(post.id); setCurrentView('manager'); setIsSidebarOpen(false); setRevealedCopiedCommentIds([]); setRevealedIgnoredCommentIds([]); }}>
                                                 <p className="text-sm line-clamp-2 text-slate-700 pr-6">{post.text}</p>
                                                 <div className="text-[10px] text-slate-400 mt-2 flex justify-between items-center">
-                                                <span className="font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">
-                                                    {postCats.join(' · ')}
-                                                </span>
+                                                <span className="font-semibold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">{postCats.join(' · ')}</span>
                                                 <span>{comments.filter(c => c.postId === post.id).length} resp.</span>
                                                 </div>
                                             </div>
-                                            <button onClick={(e) => deletePost(post.id, e)} className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100" title="Eliminar publicación">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            <button onClick={(e) => deletePost(post.id, e)} className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100" title="Eliminar publicación"><Trash2 className="w-4 h-4" /></button>
                                         </div>
                                         );
                                     })}
@@ -1242,28 +589,19 @@
                     </aside>
 
                     {}
-                    {/* MAIN CONTENT */}
                     <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                         <header className="bg-white border-b border-slate-200 p-4 flex items-center justify-between z-10 shrink-0">
                         <div className="flex items-center gap-4">
                             <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-slate-500 lg:hidden rounded-lg hover:bg-slate-100"><Menu className="w-6 h-6" /></button>
                             <div className="hidden md:flex bg-slate-100 p-1 rounded-lg">
-                                <button onClick={() => setCurrentView('manager')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'manager' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <MessageSquare className="w-4 h-4" /> Gestión
-                                </button>
-                                <button onClick={() => setCurrentView('scripts')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'scripts' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <Video className="w-4 h-4" /> Guiones
-                                </button>
-                                <button onClick={() => setCurrentView('analysis')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'analysis' ? 'bg-white shadow-sm text-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <BarChart3 className="w-4 h-4" /> Estrategia
-                                </button>
+                                <button onClick={() => setCurrentView('manager')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'manager' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}><MessageSquare className="w-4 h-4" /> Gestión</button>
+                                <button onClick={() => setCurrentView('scripts')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'scripts' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}><Video className="w-4 h-4" /> Guiones</button>
+                                <button onClick={() => setCurrentView('analysis')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'analysis' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}><BarChart3 className="w-4 h-4" /> Estrategia</button>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
                             <h1 className="text-lg font-bold text-slate-800 hidden md:block">Sen. Ivideliza Reyes</h1>
-                            <button onClick={() => setIsSettingsModalOpen(true)} className="text-slate-400 hover:text-blue-600 p-2 rounded-md transition-colors bg-slate-100 hover:bg-blue-50" title="Configuración y Mantenimiento">
-                                <Settings className="w-5 h-5"/>
-                            </button>
+                            <button onClick={() => setIsSettingsModalOpen(true)} className="text-slate-400 hover:text-blue-600 p-2 rounded-md transition-colors bg-slate-100 hover:bg-blue-50" title="Configuración y Mantenimiento"><Settings className="w-5 h-5"/></button>
                             <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
                                 <img src={user.photoURL || "https://ui-avatars.com/api/?name=User"} className="w-8 h-8 rounded-full border border-slate-200" />
                                 <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-1 rounded-md transition-colors" title="Cerrar sesión"><LogOut className="w-5 h-5"/></button>
@@ -1274,12 +612,10 @@
                         <div className="md:hidden flex bg-white border-b border-slate-200 shrink-0">
                             <button onClick={() => setCurrentView('manager')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'manager' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Gestión</button>
                             <button onClick={() => setCurrentView('scripts')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'scripts' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500'}`}>Guiones</button>
-                            <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'analysis' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
+                            <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 ${currentView === 'analysis' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
                         </div>
 
-                        {errorMsg && <div className="bg-red-50 text-red-600 p-3 text-sm text-center border-b border-red-100 flex justify-center items-center gap-2 shrink-0 animate-in fade-in duration-300">
-                            <AlertTriangle className="w-4 h-4"/> {errorMsg}
-                        </div>}
+                        {errorMsg && <div className="bg-red-50 text-red-600 p-3 text-sm text-center border-b border-red-100 flex justify-center items-center gap-2 shrink-0"><AlertTriangle className="w-4 h-4"/> {errorMsg}</div>}
 
                         <div className="flex-1 overflow-y-auto">
                         
@@ -1305,12 +641,8 @@
                                     <div className="flex justify-between items-start mb-2">
                                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Publicación Original</h3>
                                         <div className="flex items-center gap-2">
-                                            <button onClick={(e) => deletePost(activePost.id, e)} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-red-200 transition-colors" title="Eliminar publicación">
-                                                <Trash2 className="w-3 h-3" /> Eliminar
-                                            </button>
-                                            <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200 transition-colors">
-                                                <Settings className="w-3 h-3" /> {(activePost?.context || activePost?.postInstruction) ? 'Contexto Configurado' : '+ Añadir Contexto'}
-                                            </button>
+                                            <button onClick={(e) => deletePost(activePost.id, e)} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-red-200 transition-colors"><Trash2 className="w-3 h-3" /> Eliminar</button>
+                                            <button onClick={openContextModal} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 border border-slate-200 transition-colors"><Settings className="w-3 h-3" /> {(activePost?.context || activePost?.postInstruction) ? 'Contexto Configurado' : '+ Añadir Contexto'}</button>
                                         </div>
                                     </div>
                                     <p className="text-slate-600 text-sm whitespace-pre-wrap">{activePost?.text}</p>
@@ -1327,9 +659,7 @@
                                             ].map(cat => {
                                             const isActive = activeCategories.includes(cat.name);
                                             return (
-                                                <button key={cat.name} onClick={() => togglePostCategory(activePost.id, cat.name, activeCategories)} className={`p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 border-2 transition-all ${isActive ? `${cat.bg} ${cat.color} ${cat.border} shadow-sm scale-105` : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
-                                                    <cat.icon className="w-4 h-4" /> {cat.name}
-                                                </button>
+                                                <button key={cat.name} onClick={() => togglePostCategory(activePost.id, cat.name, activeCategories)} className={`p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 border-2 transition-all ${isActive ? `${cat.bg} ${cat.color} ${cat.border} shadow-sm scale-105` : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}><cat.icon className="w-4 h-4" /> {cat.name}</button>
                                             );
                                             })}
                                         </div>
@@ -1339,7 +669,7 @@
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                                     <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios a responder</h3>
                                     <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega aquí los comentarios copiados de Facebook..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
-                                    <button onClick={handleGenerateResponses} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-colors">
+                                    <button onClick={() => handleGenerateResponses()} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold">
                                     {isGenerating ? "Analizando y Redactando..." : <><Send className="w-5 h-5" /> Generar Respuestas</>}
                                     </button>
                                 </div>
@@ -1358,27 +688,10 @@
                                         
                                         return (
                                             <div className="flex flex-wrap justify-center gap-3">
-                                                {minimizedComments.length > 0 && (
-                                                    <button onClick={() => setRevealedCopiedCommentIds(copiedComments.map(c => c.id))} className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors shadow-sm">
-                                                        <Eye className="w-4 h-4"/> Mostrar {minimizedComments.length} copiadas
-                                                    </button>
-                                                )}
-                                                {revealedComments.length > 0 && (
-                                                    <button onClick={() => setRevealedCopiedCommentIds([])} className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors border border-green-200 shadow-sm">
-                                                        <EyeOff className="w-4 h-4"/> Ocultar copiadas
-                                                    </button>
-                                                )}
-
-                                                {minimizedIgnored.length > 0 && (
-                                                    <button onClick={() => setRevealedIgnoredCommentIds(ignoredComments.map(c => c.id))} className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors shadow-sm">
-                                                        <Eye className="w-4 h-4"/> Mostrar {minimizedIgnored.length} ignoradas
-                                                    </button>
-                                                )}
-                                                {revealedIgnored.length > 0 && (
-                                                    <button onClick={() => setRevealedIgnoredCommentIds([])} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 transition-colors border border-slate-200 shadow-sm">
-                                                        <EyeOff className="w-4 h-4"/> Ocultar ignoradas
-                                                    </button>
-                                                )}
+                                                {minimizedComments.length > 0 && <button onClick={() => setRevealedCopiedCommentIds(copiedComments.map(c => c.id))} className="text-xs bg-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 shadow-sm"><Eye className="w-4 h-4"/> Mostrar {minimizedComments.length} copiadas</button>}
+                                                {revealedComments.length > 0 && <button onClick={() => setRevealedCopiedCommentIds([])} className="text-xs bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold flex items-center gap-2 shadow-sm border border-green-200"><EyeOff className="w-4 h-4"/> Ocultar copiadas</button>}
+                                                {minimizedIgnored.length > 0 && <button onClick={() => setRevealedIgnoredCommentIds(ignoredComments.map(c => c.id))} className="text-xs bg-slate-200 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 shadow-sm"><Eye className="w-4 h-4"/> Mostrar {minimizedIgnored.length} ignoradas</button>}
+                                                {revealedIgnored.length > 0 && <button onClick={() => setRevealedIgnoredCommentIds([])} className="text-xs bg-slate-100 text-slate-600 px-4 py-2 rounded-full font-bold flex items-center gap-2 shadow-sm border border-slate-200"><EyeOff className="w-4 h-4"/> Ocultar ignoradas</button>}
                                             </div>
                                         );
                                     })()}
@@ -1394,47 +707,18 @@
 
                                         const vis = getSentimentVisuals(comment.sentiment, comment.isHostile);
 
-                                        if (isHidden) {
-                                            return (
-                                                <div key={comment.id} className="bg-green-50 border border-green-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-green-100 transition-colors" onClick={() => setRevealedCopiedCommentIds(prev => [...prev, comment.id])}>
-                                                    <div className="flex items-center gap-2 text-green-700 font-medium">
-                                                        <CheckCircle2 className="w-4 h-4"/> Copiado
-                                                        <span className="text-green-900 font-bold ml-2">{comment.nombreUsuario}</span>
-                                                    </div>
-                                                    <span className="text-xs text-green-600 bg-green-200 px-2 py-1 rounded font-bold">Mostrar</span>
-                                                </div>
-                                            );
-                                        }
-
-                                        if (isHiddenIgnored) {
-                                            return (
-                                                <div key={comment.id} className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setRevealedIgnoredCommentIds(prev => [...prev, comment.id])}>
-                                                    <div className="flex items-center gap-2 text-slate-500 font-medium">
-                                                        <Ban className="w-4 h-4"/> Ignorado
-                                                        <span className="text-slate-700 font-bold ml-2">{comment.nombreUsuario}</span>
-                                                    </div>
-                                                    <span className="text-xs text-slate-500 bg-slate-200 px-2 py-1 rounded font-bold">Mostrar</span>
-                                                </div>
-                                            );
-                                        }
+                                        if (isHidden) return ( <div key={comment.id} className="bg-green-50 border border-green-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-green-100" onClick={() => setRevealedCopiedCommentIds(prev => [...prev, comment.id])}><div className="flex items-center gap-2 text-green-700 font-medium"><CheckCircle2 className="w-4 h-4"/> Copiado <span className="text-green-900 font-bold ml-2">{comment.nombreUsuario}</span></div><span className="text-xs text-green-600 bg-green-200 px-2 py-1 rounded font-bold">Mostrar</span></div> );
+                                        if (isHiddenIgnored) return ( <div key={comment.id} className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex justify-between items-center text-sm shadow-sm cursor-pointer hover:bg-slate-100" onClick={() => setRevealedIgnoredCommentIds(prev => [...prev, comment.id])}><div className="flex items-center gap-2 text-slate-500 font-medium"><Ban className="w-4 h-4"/> Ignorado <span className="text-slate-700 font-bold ml-2">{comment.nombreUsuario}</span></div><span className="text-xs text-slate-500 bg-slate-200 px-2 py-1 rounded font-bold">Mostrar</span></div> );
 
                                         return (
                                             <div key={comment.id} className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden flex flex-col md:flex-row ${vis.border} transition-all ${isNoResponder ? 'opacity-50 grayscale' : ''}`}>
-                                                
                                                 <div className="p-4 md:w-2/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col space-y-3 relative">
-                                                    
                                                     <div className="flex flex-wrap justify-between items-start gap-2">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-sm flex items-center gap-1 text-slate-800">
-                                                                <User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}
-                                                            </span>
-                                                            <button onClick={() => openAliasModal(comment.nombreUsuario)} className="text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 flex items-center gap-1 transition-colors" title="Personalizar nombre">
-                                                                <UserPlus className="w-3 h-3"/> Alias
-                                                            </button>
+                                                            <span className="font-bold text-sm flex items-center gap-1 text-slate-800"><User className="w-4 h-4 text-slate-400"/> {comment.nombreUsuario}</span>
+                                                            <button onClick={() => openAliasModal(comment.nombreUsuario)} className="text-[10px] bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 flex items-center gap-1" title="Personalizar nombre"><UserPlus className="w-3 h-3"/> Alias</button>
                                                         </div>
-                                                        <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md flex items-center gap-1 ${vis.bg} ${vis.text} ${vis.pulse ? 'animate-pulse' : ''}`}>
-                                                            <vis.icon className="w-3 h-3"/> {vis.label}
-                                                        </span>
+                                                        <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-md flex items-center gap-1 ${vis.bg} ${vis.text} ${vis.pulse ? 'animate-pulse' : ''}`}><vis.icon className="w-3 h-3"/> {vis.label}</span>
                                                     </div>
 
                                                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
@@ -1450,48 +734,29 @@
                                                     </div>
                                                     
                                                     {editingCommentId === comment.id ? (
-                                                        <textarea
-                                                            value={editingCommentText}
-                                                            onChange={(e) => setEditingCommentText(e.target.value)}
-                                                            className="w-full mt-2 p-3 text-base text-slate-800 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
-                                                        />
+                                                        <textarea value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} className="w-full mt-2 p-3 text-base text-slate-800 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]" />
                                                     ) : (
-                                                        <div className="text-base text-slate-800 mt-2 font-medium bg-white p-3 rounded-xl border border-slate-100 shadow-inner">
-                                                            {comment.generatedResponse}
-                                                        </div>
+                                                        <div className="text-base text-slate-800 mt-2 font-medium bg-white p-3 rounded-xl border border-slate-100 shadow-inner">{comment.generatedResponse}</div>
                                                     )}
                                                 </div>
 
                                                 <div className="p-4 md:w-1/3 bg-slate-50 flex flex-col justify-center gap-2">
                                                     {editingCommentId === comment.id ? (
                                                         <>
-                                                            <button onClick={() => saveEditedResponse(comment.id)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm">
-                                                                <Save className="w-5 h-5"/> Guardar
-                                                            </button>
-                                                            <button onClick={() => setEditingCommentId(null)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 transition-colors">
-                                                                Cancelar
-                                                            </button>
+                                                            <button onClick={() => saveEditedResponse(comment.id)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-blue-600 text-white hover:bg-blue-700 shadow-sm"><Save className="w-5 h-5"/> Guardar</button>
+                                                            <button onClick={() => setEditingCommentId(null)} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-white text-slate-500 border border-slate-200 hover:bg-slate-100">Cancelar</button>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50'}`}>
+                                                            <button onClick={() => handleCopy(comment.id, comment.generatedResponse)} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm ${copiedId === comment.id ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50'}`}>
                                                                 {copiedId === comment.id ? <><CheckCircle2 className="w-5 h-5"/> ¡Copiado!</> : <><Copy className="w-5 h-5"/> Copiar Respuesta</>}
                                                             </button>
                                                             
                                                             <div className="grid grid-cols-2 gap-2">
-                                                                <button onClick={() => startEditingComment(comment)} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 text-xs transition-colors">
-                                                                    <Edit2 className="w-4 h-4"/> Editar
-                                                                </button>
-                                                                <button onClick={() => { setRegeneratingCommentId(comment.id); setRegenerateInstruction(""); }} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-purple-600 border border-purple-200 hover:bg-purple-50 text-xs transition-colors" title="Dar instrucciones para reescribir esta respuesta">
-                                                                    <RefreshCw className="w-4 h-4"/> Repensar
-                                                                </button>
+                                                                <button onClick={() => startEditingComment(comment)} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 text-xs"><Edit2 className="w-4 h-4"/> Editar</button>
+                                                                <button onClick={() => { setRegeneratingCommentId(comment.id); setRegenerateInstruction(""); }} className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 bg-white text-purple-600 border border-purple-200 hover:bg-purple-50 text-xs"><RefreshCw className="w-4 h-4"/> Repensar</button>
                                                             </div>
-                                                            <button onClick={() => {
-                                                                changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder');
-                                                                setRevealedIgnoredCommentIds(prev => prev.filter(id => id !== comment.id));
-                                                            }} className={`w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs transition-colors ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}>
-                                                                <Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar Comentario'}
-                                                            </button>
+                                                            <button onClick={() => { changeCommentStatus(comment.id, isNoResponder ? 'pendiente' : 'no_responder'); setRevealedIgnoredCommentIds(prev => prev.filter(id => id !== comment.id)); }} className={`w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1 border text-xs ${isNoResponder ? 'bg-slate-700 text-white border-slate-800' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-red-500'}`}><Ban className="w-4 h-4"/> {isNoResponder ? 'Restaurar' : 'Ignorar Comentario'}</button>
                                                         </>
                                                     )}
                                                 </div>
@@ -1511,124 +776,62 @@
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
                                         <div className="flex items-center gap-3 mb-6 text-indigo-700">
                                             <Video className="w-7 h-7" />
-                                            <h2 className="text-xl font-bold">Generador de Guiones para Video</h2>
+                                            <h2 className="text-xl font-bold">Generador de Guiones con IA</h2>
                                         </div>
-
                                         <div className="space-y-6">
                                             <div>
                                                 <label className="block text-sm font-bold text-slate-700 mb-2">1. ¿De qué tratará el video?</label>
-                                                <p className="text-[11px] text-slate-500 mb-2">Sé específico. La IA buscará en Google (Grounding) para asegurar que los datos sean reales y no haya alucinaciones.</p>
-                                                <textarea 
-                                                    value={scriptTopic} 
-                                                    onChange={(e) => setScriptTopic(e.target.value)} 
-                                                    placeholder="Ej. Hablar sobre la nueva reforma al poder judicial y cómo afectará a los trabajadores de Nayarit..." 
-                                                    className="w-full h-24 p-4 rounded-xl border border-slate-300 focus:border-indigo-500 outline-none resize-none text-slate-700" 
-                                                />
+                                                <p className="text-xs text-slate-500 mb-2">La IA buscará datos en internet para no inventar información.</p>
+                                                <textarea value={scriptTopic} onChange={(e)=>setScriptTopic(e.target.value)} placeholder="Ej: Las recientes reformas al poder judicial y cómo afectan a Nayarit..." className="w-full h-24 p-4 rounded-xl border border-slate-300 focus:border-indigo-500 outline-none resize-none" />
                                             </div>
-
                                             <div>
-                                                <label className="block text-sm font-bold text-slate-700 mb-2">2. Enfoque y Tono</label>
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">2. Enfoque (Puedes elegir varios)</label>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {['Legislativo', 'Política', 'Social', 'Informativo', 'Familiar/Personal'].map(cat => (
-                                                        <button 
-                                                            key={cat} 
-                                                            onClick={() => toggleScriptCategory(cat)}
-                                                            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border ${scriptCategories.includes(cat) ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-                                                        >
-                                                            {cat}
-                                                        </button>
+                                                    {['Legislativo', 'Política', 'Social', 'Familiar'].map(cat => (
+                                                        <button key={cat} onClick={()=>{let n=[...scriptCategories]; if(n.includes(cat)) n=n.filter(c=>c!==cat); else n.push(cat); if(!n.length) n=["Legislativo"]; setScriptCategories(n);}} className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${scriptCategories.includes(cat)?'bg-indigo-100 text-indigo-700 border-indigo-300':'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{cat}</button>
                                                     ))}
                                                 </div>
                                             </div>
-
                                             <div>
-                                                <label className="block text-sm font-bold text-slate-700 mb-2">3. Restricciones o Instrucciones (Opcional)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={scriptConstraints} 
-                                                    onChange={(e) => setScriptConstraints(e.target.value)} 
-                                                    placeholder="Ej. Que no dure más de 1 minuto, menciona a la comunidad de Xalisco, etc." 
-                                                    className="w-full p-3 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none text-sm text-slate-700"
-                                                />
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">3. Restricciones Especiales (Opcional)</label>
+                                                <input value={scriptConstraints} onChange={(e)=>setScriptConstraints(e.target.value)} placeholder="Ej: Que dure menos de 1 minuto, usar lenguaje muy sencillo..." className="w-full p-3 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none text-sm" />
                                             </div>
-
-                                            <div className="pt-4 flex justify-end">
-                                                <button 
-                                                    onClick={handleGenerateScript} 
-                                                    disabled={!scriptTopic.trim() || isGeneratingScript} 
-                                                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors shadow-md"
-                                                >
-                                                    {isGeneratingScript ? (
-                                                        <>Buscando y Escribiendo...</>
-                                                    ) : (
-                                                        <><Wand2 className="w-5 h-5" /> Generar Guion Seguro</>
-                                                    )}
+                                            <div className="flex justify-end pt-2 border-t border-slate-100">
+                                                <button onClick={()=>executeWithApiKey(runGenerateScript)} disabled={!scriptTopic.trim()||isGeneratingScript} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors">
+                                                    <Wand2 className="w-5 h-5" /> {isGeneratingScript?"Escribiendo y Buscando...":"Generar Guion"}
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="space-y-4">
-                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                            <div className="bg-indigo-50 border-b border-indigo-100 p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                                <div>
-                                                    <h3 className="font-bold text-indigo-900 text-lg flex items-center gap-2">
-                                                        <Video className="w-5 h-5" /> Resultado y Edición
-                                                    </h3>
-                                                    <p className="text-xs text-indigo-600 mt-1 line-clamp-1">{activeScript?.topic}</p>
-                                                </div>
-                                                <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                                    <button onClick={handleAdaptScript} disabled={isAdaptingScript} className="flex-1 md:flex-none text-sm font-bold bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300 px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
-                                                        {isAdaptingScript ? "Adecuando..." : <><Sparkles className="w-4 h-4"/> Adecuar</>}
-                                                    </button>
-                                                    <button onClick={saveEditedScript} className="flex-1 md:flex-none text-sm font-bold bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
-                                                        <Save className="w-4 h-4"/> Guardar
-                                                    </button>
-                                                    <button onClick={handleCopyScript} className={`flex-1 md:flex-none text-sm font-bold px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors border ${copiedScriptId ? 'bg-green-100 text-green-700 border-green-300' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-300'}`}>
-                                                        {copiedScriptId ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                                        Copiar
-                                                    </button>
-                                                </div>
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[600px]">
+                                        <div className="bg-indigo-50 border-b border-indigo-100 p-4 flex justify-between items-center shrink-0">
+                                            <div>
+                                                <h3 className="font-bold text-indigo-900 text-lg flex items-center gap-2"><Video className="w-5 h-5"/> Edición de Guion</h3>
+                                                <p className="text-xs text-indigo-700 mt-1">Puedes modificar el texto directamente aquí.</p>
                                             </div>
-
-                                            <div className="p-0">
-                                                <textarea 
-                                                    value={editingScriptText}
-                                                    onChange={(e) => setEditingScriptText(e.target.value)}
-                                                    className="w-full min-h-[400px] p-6 outline-none text-slate-700 leading-relaxed resize-y focus:ring-inset focus:ring-4 focus:ring-indigo-50 transition-all bg-slate-50 hover:bg-white"
-                                                    placeholder="El guion aparecerá aquí..."
-                                                />
-                                            </div>
-
-                                            <div className="border-t border-slate-200 bg-slate-50 p-4">
-                                                <label className="block text-xs font-bold text-indigo-700 uppercase mb-2 flex items-center gap-1">
-                                                    <Wand2 className="w-3 h-3" /> Ajustes de IA (Refinar)
-                                                </label>
-                                                <div className="flex gap-2">
-                                                    <input 
-                                                        type="text" 
-                                                        value={scriptRefineInstruction}
-                                                        onChange={(e) => setScriptRefineInstruction(e.target.value)}
-                                                        placeholder="Ej. Hazlo más corto, menciona la ley X..."
-                                                        className="flex-1 p-3 text-sm rounded-lg border border-slate-300 focus:border-indigo-500 outline-none"
-                                                        disabled={isRefiningScript}
-                                                    />
-                                                    <button 
-                                                        onClick={handleRefineScript}
-                                                        disabled={!scriptRefineInstruction.trim() || isRefiningScript}
-                                                        className="bg-indigo-400 hover:bg-indigo-500 text-white font-bold px-6 py-2 rounded-lg disabled:opacity-50 transition-colors flex items-center gap-2"
-                                                    >
-                                                        {isRefiningScript ? "Pensando..." : <><Edit2 className="w-4 h-4"/> Refinar</>}
-                                                    </button>
-                                                </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={()=>executeWithApiKey(runAdaptScript)} disabled={isAdaptingScript} className="text-sm font-bold bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors border border-purple-200" title="Pulir ortografía y redacción del texto actual">
+                                                    <Sparkles className="w-4 h-4"/> {isAdaptingScript?"Adecuando...":"Adecuar"}
+                                                </button>
+                                                <button onClick={async ()=>{await updateDoc(doc(db,'artifacts',appId,'users',user.uid,'scripts',activeScriptId),{content:editingScriptText}); showAlert("Guion guardado exitosamente.");}} className="text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                                                    <Save className="w-4 h-4"/> Guardar
+                                                </button>
+                                                <button onClick={()=>{copyToClipboard(editingScriptText); showAlert("Copiado al portapapeles.");}} className="text-sm font-bold bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                                                    <Copy className="w-4 h-4"/> Copiar
+                                                </button>
                                             </div>
                                         </div>
                                         
-                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3 text-sm text-blue-800">
-                                            <Info className="w-5 h-5 shrink-0 text-blue-500" />
-                                            <div>
-                                                <p className="font-bold mb-1">Tips para edición rápida</p>
-                                                <p>Puedes editar el texto manualmente en el recuadro blanco y luego presionar el botón <b>Adecuar</b> para que la IA arregle la fluidez, la ortografía y una las ideas sin modificar tu mensaje.</p>
+                                        <textarea value={editingScriptText} onChange={(e)=>setEditingScriptText(e.target.value)} className="flex-1 w-full p-6 outline-none text-slate-700 bg-slate-50 hover:bg-white resize-none text-lg leading-relaxed focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors" />
+                                        
+                                        <div className="border-t border-slate-200 bg-white p-4 shrink-0">
+                                            <label className="block text-xs font-bold text-indigo-700 uppercase mb-2"><Wand2 className="w-3 h-3 inline mr-1" /> Ajustes con IA (Refinar)</label>
+                                            <div className="flex gap-2">
+                                                <input value={scriptRefineInstruction} onChange={(e)=>setScriptRefineInstruction(e.target.value)} className="flex-1 p-3 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none text-sm" placeholder="Ej: Hazlo más corto, menciona la colonia Centro..." disabled={isRefiningScript} />
+                                                <button onClick={()=>executeWithApiKey(runRefineScript)} disabled={!scriptRefineInstruction.trim()||isRefiningScript} className="bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-2">
+                                                    {isRefiningScript ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Edit2 className="w-4 h-4"/>} Refinar
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -1642,14 +845,10 @@
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
                                 <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
                                 <Target className="w-6 h-6 text-purple-700" />
-                                <div>
-                                    <h2 className="font-bold text-purple-900 text-lg">Estrategia Global (Aplica a todo)</h2>
-                                    <p className="text-xs text-purple-700">Líneas discursivas que Gemini considerará en todas las respuestas.</p>
-                                </div>
+                                <div><h2 className="font-bold text-purple-900 text-lg">Estrategia Global (Aplica a todo)</h2><p className="text-xs text-purple-700">Líneas discursivas que Gemini considerará en todas las respuestas.</p></div>
                                 </div>
                                 <div className="p-5">
                                 <textarea value={newStrategyText} onChange={(e) => setNewStrategyText(e.target.value)} placeholder="Ej: Siempre hablar de los foros ciudadanos..." className="w-full h-20 p-4 rounded-xl border border-slate-300 focus:border-purple-500 outline-none resize-none text-slate-700" />
-                                
                                 <div className="mt-3 flex justify-between items-center">
                                     <div className="text-sm font-medium text-green-600 flex items-center gap-1 min-h-[24px]">
                                         {strategySuccessMsg && <><Check className="w-4 h-4"/> {strategySuccessMsg}</>}
@@ -1663,9 +862,7 @@
 
                             {strategies.length > 0 && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="bg-slate-50 p-3 border-b border-slate-100">
-                                        <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2"><Target className="w-4 h-4 text-purple-500"/> Manual de Instrucciones Activas</h3>
-                                    </div>
+                                    <div className="bg-slate-50 p-3 border-b border-slate-100"><h3 className="font-bold text-slate-700 text-sm flex items-center gap-2"><Target className="w-4 h-4 text-purple-500"/> Manual de Instrucciones Activas</h3></div>
                                     <div className="p-4 space-y-3">
                                         {strategies.map((strategy, index) => (
                                             <div key={strategy.id} className="p-3 bg-purple-50/50 border border-purple-100 rounded-lg flex gap-3 group relative">
@@ -1674,16 +871,10 @@
                                                     {editingStrategyId === strategy.id ? (
                                                         <div className="flex flex-col gap-2">
                                                             <textarea value={editingStrategyText} onChange={(e) => setEditingStrategyText(e.target.value)} className="w-full p-2 border border-purple-300 rounded-md focus:outline-none text-sm" rows="3" />
-                                                            <div className="flex justify-end gap-2">
-                                                                <button onClick={() => setEditingStrategyId(null)} className="px-3 py-1 text-xs text-slate-500 hover:bg-slate-200 rounded">Cancelar</button>
-                                                                <button onClick={saveEditedStrategy} className="px-3 py-1 text-xs bg-purple-600 text-white rounded font-bold">Guardar</button>
-                                                            </div>
+                                                            <div className="flex justify-end gap-2"><button onClick={() => setEditingStrategyId(null)} className="px-3 py-1 text-xs text-slate-500 hover:bg-slate-200 rounded">Cancelar</button><button onClick={saveEditedStrategy} className="px-3 py-1 text-xs bg-purple-600 text-white rounded font-bold">Guardar</button></div>
                                                         </div>
-                                                    ) : (
-                                                        <p className="text-slate-700 text-sm whitespace-pre-wrap">{strategy.text}</p>
-                                                    )}
+                                                    ) : ( <p className="text-slate-700 text-sm whitespace-pre-wrap">{strategy.text}</p> )}
                                                 </div>
-                                                
                                                 {!editingStrategyId && (
                                                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 md:opacity-0 flex gap-1 bg-white shadow-sm border border-slate-200 rounded-md p-1 transition-opacity">
                                                     <button onClick={() => startEditingStrategy(strategy)} className="p-1.5 text-slate-400 hover:text-blue-500 rounded" title="Editar"><Edit2 className="w-4 h-4"/></button>
@@ -1697,81 +888,41 @@
                             )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                                        <BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas de {currentMonthName}
-                                    </h3>
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4"><BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas de {currentMonthName}</h3>
                                     
                                     <div className="grid grid-cols-2 gap-4 mb-5">
-                                        <div className="bg-blue-50 rounded-xl p-4 text-center border border-blue-100 flex flex-col items-center justify-center">
-                                            <FileText className="w-5 h-5 text-blue-400 mb-1" />
-                                            <p className="text-3xl font-black text-blue-700">{monthlyPosts.length}</p>
-                                            <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Posteos</p>
-                                        </div>
-                                        <div className="bg-slate-50 rounded-xl p-4 text-center border border-slate-200 flex flex-col items-center justify-center">
-                                            <MessageCircle className="w-5 h-5 text-slate-400 mb-1" />
-                                            <p className="text-3xl font-black text-slate-700">{monthlyComments.length}</p>
-                                            <p className="text-[10px] font-bold text-slate-600 uppercase mt-1">Comentarios Analizados</p>
-                                        </div>
+                                        <div className="bg-blue-50 rounded-xl p-4 text-center border border-blue-100 flex flex-col items-center justify-center"><FileText className="w-5 h-5 text-blue-400 mb-1" /><p className="text-3xl font-black text-blue-700">{monthlyPosts.length}</p><p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Posteos</p></div>
+                                        <div className="bg-slate-50 rounded-xl p-4 text-center border border-slate-200 flex flex-col items-center justify-center"><MessageCircle className="w-5 h-5 text-slate-400 mb-1" /><p className="text-3xl font-black text-slate-700">{monthlyComments.length}</p><p className="text-[10px] font-bold text-slate-600 uppercase mt-1">Comentarios Analizados</p></div>
                                     </div>
 
                                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 border-b pb-1">Desglose de Sentimientos</p>
                                     <div className="grid grid-cols-3 gap-3 mb-5">
-                                        <div className="bg-green-50 rounded-xl p-3 flex flex-col items-center border border-green-100">
-                                            <p className="text-xl font-black text-green-600">{sentPos}</p>
-                                            <p className="text-[9px] font-bold text-green-700 uppercase mt-1 text-center leading-tight">Positivo</p>
-                                        </div>
-                                        <div className="bg-slate-50 rounded-xl p-3 flex flex-col items-center border border-slate-200">
-                                            <p className="text-xl font-black text-slate-600">{sentNeu}</p>
-                                            <p className="text-[9px] font-bold text-slate-600 uppercase mt-1 text-center leading-tight">Neutro</p>
-                                        </div>
-                                        <div className="bg-amber-50 rounded-xl p-3 flex flex-col items-center border border-amber-100">
-                                            <p className="text-xl font-black text-amber-600">{sentRec}</p>
-                                            <p className="text-[9px] font-bold text-amber-700 uppercase mt-1 text-center leading-tight">Reclamo</p>
-                                        </div>
-                                        <div className="bg-orange-50 rounded-xl p-3 flex flex-col items-center border border-orange-100">
-                                            <p className="text-xl font-black text-orange-600">{sentCrit}</p>
-                                            <p className="text-[9px] font-bold text-orange-700 uppercase mt-1 text-center leading-tight">Crítica Externa</p>
-                                        </div>
-                                        <div className="bg-red-50 rounded-xl p-3 flex flex-col items-center border border-red-100">
-                                            <p className="text-xl font-black text-red-600">{sentNeg}</p>
-                                            <p className="text-[9px] font-bold text-red-700 uppercase mt-1 text-center leading-tight">Negativo / Ataque</p>
-                                        </div>
-                                        <div className="bg-red-100 rounded-xl p-3 flex flex-col items-center border border-red-300">
-                                            <p className="text-xl font-black text-red-800">{sentEsc}</p>
-                                            <p className="text-[9px] font-bold text-red-900 uppercase mt-1 text-center leading-tight">Escalar</p>
-                                        </div>
+                                        <div className="bg-green-50 rounded-xl p-3 flex flex-col items-center border border-green-100"><p className="text-xl font-black text-green-600">{sentPos}</p><p className="text-[9px] font-bold text-green-700 uppercase mt-1 text-center leading-tight">Positivo</p></div>
+                                        <div className="bg-slate-50 rounded-xl p-3 flex flex-col items-center border border-slate-200"><p className="text-xl font-black text-slate-600">{sentNeu}</p><p className="text-[9px] font-bold text-slate-600 uppercase mt-1 text-center leading-tight">Neutro</p></div>
+                                        <div className="bg-amber-50 rounded-xl p-3 flex flex-col items-center border border-amber-100"><p className="text-xl font-black text-amber-600">{sentRec}</p><p className="text-[9px] font-bold text-amber-700 uppercase mt-1 text-center leading-tight">Reclamo</p></div>
+                                        <div className="bg-orange-50 rounded-xl p-3 flex flex-col items-center border border-orange-100"><p className="text-xl font-black text-orange-600">{sentCrit}</p><p className="text-[9px] font-bold text-orange-700 uppercase mt-1 text-center leading-tight">Crítica Externa</p></div>
+                                        <div className="bg-red-50 rounded-xl p-3 flex flex-col items-center border border-red-100"><p className="text-xl font-black text-red-600">{sentNeg}</p><p className="text-[9px] font-bold text-red-700 uppercase mt-1 text-center leading-tight">Negativo / Ataque</p></div>
+                                        <div className="bg-red-100 rounded-xl p-3 flex flex-col items-center border border-red-300"><p className="text-xl font-black text-red-800">{sentEsc}</p><p className="text-[9px] font-bold text-red-900 uppercase mt-1 text-center leading-tight">Escalar</p></div>
                                     </div>
-
                                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Enfoque Predominante</p>
-                                    <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100 flex items-center justify-between">
-                                        <div>
-                                            <p className="text-[10px] font-bold text-indigo-500 uppercase">Más usado</p>
-                                            <p className="text-sm font-bold text-indigo-700">{topCat}</p>
-                                        </div>
-                                        <Megaphone className="w-5 h-5 text-indigo-300" />
-                                    </div>
+                                    <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100 flex items-center justify-between"><div><p className="text-[10px] font-bold text-indigo-500 uppercase">Más usado</p><p className="text-sm font-bold text-indigo-700">{topCat}</p></div><Megaphone className="w-5 h-5 text-indigo-300" /></div>
                                 </div>
 
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full max-h-[600px]">
                                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl shrink-0">
                                         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultorías IA</h3>
-                                        <button onClick={generateAIReport} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-1">
+                                        <button onClick={()=>executeWithApiKey(runGenerateReport)} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-1">
                                         {isGeneratingReport ? "Analizando..." : <><Plus className="w-3 h-3"/> Nuevo Reporte</>}
                                         </button>
                                     </div>
                                     <div className="p-3 flex-1 overflow-y-auto space-y-2">
-                                        {aiReports.length === 0 ? (
-                                        <p className="text-sm text-slate-400 text-center mt-10">Aún no hay reportes generados. Genera uno al finalizar el mes.</p>
+                                        {aiReports.length === 0 ? ( <p className="text-sm text-slate-400 text-center mt-10">Aún no hay reportes generados. Genera uno al finalizar el mes.</p>
                                         ) : (
                                             aiReports.map((rep, index) => (
                                                 <button key={rep.id} onClick={() => setViewingReport(rep)} className="w-full text-left p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50 transition-all flex items-center gap-3">
                                                     <div className="bg-white p-2 rounded-lg border border-slate-100 shadow-sm"><FileClock className="w-5 h-5 text-amber-600"/></div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-700 text-sm">{rep.title || `Reporte 0${index + 1}`}</p>
-                                                        <p className="text-xs text-slate-400">{rep.createdAt?.toDate().toLocaleDateString() || 'Generado recientemente'}</p>
-                                                    </div>
+                                                    <div><p className="font-bold text-slate-700 text-sm">{rep.title || `Reporte 0${index + 1}`}</p><p className="text-xs text-slate-400">{rep.createdAt?.toDate().toLocaleDateString() || 'Generado recientemente'}</p></div>
                                                     <ChevronRight className="w-4 h-4 text-slate-300 ml-auto" />
                                                 </button>
                                             ))
@@ -1786,9 +937,127 @@
 
                     {}
                     
-                    {/* MODAL PARA VER REPORTE IA */}
+                    {/* Modales Genéricos: Alert y Confirm */}
+                    {confirmDialog.isOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-sm text-center">
+                                <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+                                <h3 className="font-bold text-slate-800 mb-2">Confirmación</h3>
+                                <p className="text-slate-600 text-sm mb-6">{confirmDialog.message}</p>
+                                <div className="flex justify-center gap-3">
+                                    <button onClick={() => setConfirmDialog({isOpen: false, message: "", onConfirm: null})} className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition-colors">Cancelar</button>
+                                    <button onClick={confirmDialog.onConfirm} className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shadow-sm">Aceptar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {alertDialog.isOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-sm text-center">
+                                <Info className="w-12 h-12 text-blue-500 mx-auto mb-4" />
+                                <h3 className="font-bold text-slate-800 mb-2">Aviso</h3>
+                                <p className="text-slate-600 text-sm mb-6">{alertDialog.message}</p>
+                                <button onClick={() => setAlertDialog({isOpen: false, message: ""})} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors shadow-sm w-full">Entendido</button>
+                            </div>
+                        </div>
+                    )}
+
                     {viewingReport && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
                                 <div className="p-4 border-b flex justify-between items-center bg-amber-50">
-                                    <h2 className="font-bold text-amber-900 flex items-center gap-2"><Lightbulb
+                                    <h2 className="font-bold text-amber-900 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-600" /> {viewingReport.title || 'Reporte de Consultoría'}</h2>
+                                    <button onClick={() => setViewingReport(null)} className="p-1 hover:bg-amber-100 rounded-lg"><X className="w-6 h-6 text-amber-700" /></button>
+                                </div>
+                                <div className="p-6 overflow-y-auto space-y-6">
+                                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100"><p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Tema Principal del Periodo</p><p className="text-lg font-black text-slate-800 leading-tight">{viewingReport.report?.temaPrincipal}</p></div>
+                                    <div><p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Diagnóstico Situacional</p><p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed">{viewingReport.report?.analisisSituacion}</p></div>
+                                    <div><p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Propuestas de Mejora</p><ul className="space-y-3">{viewingReport.report?.propuestas?.map((prop, idx) => (<li key={idx} className="flex gap-3 text-sm text-slate-700"><span className="text-amber-500 mt-0.5"><CheckCircle2 className="w-4 h-4" /></span><span>{prop}</span></li>))}</ul></div>
+                                </div>
+                                <div className="p-4 border-t bg-slate-50 flex justify-end"><button onClick={() => setViewingReport(null)} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold">Cerrar Reporte</button></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isSettingsModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="p-4 border-b flex justify-between bg-slate-50 shrink-0"><h2 className="font-bold flex items-center gap-2"><Settings className="w-5 h-5 text-slate-500" /> Configuración y Mantenimiento</h2><button onClick={() => setIsSettingsModalOpen(false)}><X className="w-6 h-6 text-slate-400 hover:text-slate-700" /></button></div>
+                            <div className="p-6 overflow-y-auto flex-1 space-y-8">
+                                <div className="border border-red-200 rounded-xl overflow-hidden">
+                                    <div className="bg-red-50 p-4 border-b border-red-200 flex items-center gap-3"><Trash className="w-5 h-5 text-red-600"/><div><h3 className="font-bold text-red-900">Limpieza de Base de Datos</h3><p className="text-xs text-red-700">Evita superar la cuota gratuita de lecturas de Firebase borrando datos antiguos.</p></div></div>
+                                    <div className="p-4 bg-white flex justify-between items-center"><div className="text-sm text-slate-600"><p>Actualmente tienes <b>{posts.length}</b> posts y <b>{comments.length}</b> comentarios en total.</p></div><button onClick={purgeOldData} disabled={isPurging} className="bg-red-100 text-red-700 hover:bg-red-600 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors flex items-center gap-2">{isPurging ? "Borrando..." : <><Trash2 className="w-4 h-4"/> Purgar &gt; 3 meses</>}</button></div>
+                                </div>
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 flex justify-end shrink-0"><button onClick={() => setIsSettingsModalOpen(false)} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 shadow-sm">Cerrar</button></div>
+                        </div>
+                        </div>
+                    )}
+
+                    {isContextModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="p-4 border-b flex justify-between bg-slate-50 shrink-0"><h2 className="font-bold flex items-center gap-2"><Settings className="w-5 h-5 text-slate-500" /> Configuración de la Publicación</h2><button onClick={() => setIsContextModalOpen(false)}><X className="w-6 h-6 text-slate-400 hover:text-slate-700" /></button></div>
+                            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                                <div><label className="block text-sm font-bold text-slate-700 mb-1">Contexto Específico (Antecedentes)</label><p className="text-[10px] text-slate-500 mb-2">Información de qué trata el post, datos importantes que la IA deba saber para responder.</p><textarea value={tempContextText} onChange={(e) => setTempContextText(e.target.value)} placeholder="Ej: Se entregaron 500 apoyos en la colonia Centro..." className="w-full h-24 p-3 rounded-xl border border-slate-300 outline-none resize-none text-sm focus:border-blue-500" /></div>
+                                <div><label className="block text-sm font-bold text-blue-700 mb-1">Instrucción Temporal para Respuestas</label><p className="text-[10px] text-slate-500 mb-2">Una instrucción que SOLO aplique a este post.</p><textarea value={tempPostInstruction} onChange={(e) => setTempPostInstruction(e.target.value)} placeholder="Ej: Agradecer reclamos ciudadanos y llevar respuesta hacia soluciones..." className="w-full h-24 p-3 rounded-xl border border-blue-300 outline-none resize-none text-sm bg-blue-50 focus:border-blue-500" /></div>
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 shrink-0"><button onClick={() => setIsContextModalOpen(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg">Cancelar</button><button onClick={savePostContext} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-sm">Guardar</button></div>
+                        </div>
+                        </div>
+                    )}
+
+                    {isAliasModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+                            <div className="p-4 border-b flex justify-between bg-blue-50"><h2 className="font-bold flex items-center gap-2 text-blue-800"><UserPlus className="w-5 h-5 text-blue-600" /> Memoria de Nombres</h2><button onClick={() => setIsAliasModalOpen(false)}><X className="w-5 h-5 text-blue-400 hover:text-blue-700" /></button></div>
+                            <div className="p-5">
+                                <div className="mb-4"><label className="block text-xs font-bold text-slate-500 uppercase">Nombre en Facebook:</label><p className="text-slate-800 font-medium bg-slate-50 p-2 rounded border mt-1">{tempAliasOriginal}</p></div>
+                                <div><label className="block text-xs font-bold text-blue-600 uppercase">¿Cómo prefiere que le llamen?</label><input type="text" value={tempAliasPreferred} onChange={(e) => setTempAliasPreferred(e.target.value)} placeholder="Ej: Pakin, Lic. José..." className="w-full mt-1 p-3 border-2 border-blue-200 rounded-lg focus:outline-none focus:border-blue-500 text-slate-800"/><p className="text-[10px] text-slate-500 mt-2">La IA recordará este alias automáticamente.</p></div>
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3"><button onClick={() => setIsAliasModalOpen(false)} className="px-4 py-2 text-slate-600 text-sm font-medium">Cancelar</button><button onClick={saveAlias} disabled={!tempAliasPreferred.trim()} className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">Guardar</button></div>
+                        </div>
+                        </div>
+                    )}
+
+                    {isApiModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+                                <div className="bg-blue-600 p-6 text-center"><div className="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><Key className="w-8 h-8 text-white" /></div><h2 className="text-xl font-bold text-white">Configurar Gemini API Key</h2><p className="text-blue-100 text-sm mt-2">La llave se guarda localmente en tu navegador.</p></div>
+                                <div className="p-6"><label className="block text-sm font-bold text-slate-700 mb-2">Ingresa tu API Key:</label><input type="password" value={tempApiKey} onChange={(e) => setTempApiKey(e.target.value)} placeholder="AIzaSyA..." className="w-full p-4 rounded-xl border-2 border-slate-200 focus:border-blue-500 outline-none text-slate-800 font-mono" /><div className="mt-6 flex justify-end gap-3"><button onClick={() => { setIsApiModalOpen(false); setPendingAction(null); }} className="px-5 py-3 text-slate-500 font-medium hover:bg-slate-100 rounded-xl">Cancelar</button><button onClick={saveApiKeyAndExecute} disabled={!tempApiKey.trim()} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50 shadow-md">Guardar y Continuar</button></div></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {regeneratingCommentId && commentBeingRegenerated && (
+                        <div className="fixed inset-0 bg-black/60 z-[55] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-purple-200">
+                            <div className="p-4 border-b flex justify-between bg-purple-50 shrink-0">
+                                <div><h2 className="font-bold flex items-center gap-2 text-purple-900"><RefreshCw className="w-5 h-5 text-purple-600" /> Repensar Respuesta</h2><p className="text-xs text-purple-700 mt-1">Dale instrucciones a la IA para mejorar esta respuesta.</p></div>
+                                <button onClick={() => { setRegeneratingCommentId(null); setRegenerateInstruction(""); }} disabled={isRegeneratingSingle}><X className="w-6 h-6 text-purple-400 hover:text-purple-700" /></button>
+                            </div>
+                            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                                <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Comentario original de {commentBeingRegenerated.nombreUsuario}:</p><p className="text-slate-700 italic">"{commentBeingRegenerated.originalComment}"</p><div className="mt-3 pt-3 border-t border-slate-200"><p className="text-[10px] font-bold text-red-400 uppercase mb-1">Versión actual:</p><p className="text-slate-600 bg-white p-2 rounded border border-slate-100">"{commentBeingRegenerated.generatedResponse}"</p></div></div>
+                                <div><label className="block text-sm font-bold text-purple-700 mb-2">¿Cómo quieres que sea la nueva respuesta?</label><textarea value={regenerateInstruction} onChange={(e) => setRegenerateInstruction(e.target.value)} placeholder="Ej: Hazla más amable..." className="w-full h-28 p-3 rounded-xl border-2 border-purple-200 outline-none resize-none text-sm focus:border-purple-500" disabled={isRegeneratingSingle} /></div>
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 shrink-0">
+                                <button onClick={() => { setRegeneratingCommentId(null); setRegenerateInstruction(""); }} disabled={isRegeneratingSingle} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg disabled:opacity-50">Cancelar</button>
+                                <button onClick={() => executeWithApiKey(runRegenerateSingleResponse)} disabled={!regenerateInstruction.trim() || isRegeneratingSingle} className="px-6 py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 shadow-sm disabled:opacity-50 flex items-center gap-2">{isRegeneratingSingle ? <><RefreshCw className="w-4 h-4 animate-spin"/> Pensando...</> : "Generar versión"}</button>
+                            </div>
+                        </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        try {
+            const root = createRoot(document.getElementById('root'));
+            root.render(<App />);
+        } catch (error) {
+            console.error(error);
+            document.getElementById('root').innerHTML = '<div style="padding:20px; color:red; font-family:sans-serif; text-align:center;"><b>Error crítico al renderizar:</b><br><br>' + error.message + '</div>';
+        }
+    </script>
+</body>
+</html>
