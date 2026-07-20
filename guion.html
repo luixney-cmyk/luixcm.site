@@ -43,7 +43,8 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Video, Copy, Plus, Menu, X, ArrowLeft, Send, CheckCircle2, History, AlertTriangle, Globe, Sparkles, Save, Edit3, Type, Trash2, Key, Users, BookOpen, Megaphone, Smile, RefreshCw } from 'lucide-react';
+        // ¡Aquí estaba el error! Se agregó 'Settings' a la lista de importaciones.
+        import { Video, Copy, Plus, Menu, X, ArrowLeft, Send, CheckCircle2, History, AlertTriangle, Globe, Sparkles, Save, Edit3, Type, Trash2, Key, Users, BookOpen, Megaphone, Smile, RefreshCw, Settings } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -462,7 +463,7 @@
                                 </h1>
                             </div>
                             <div className="flex items-center gap-4">
-                                <button onClick={() => setIsApiModalOpen(true)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-md transition-colors" title="Configurar API Key">
+                                <button onClick={() => setIsApiModalOpen(true)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-md transition-colors bg-slate-100 hover:bg-indigo-50" title="Configurar API Key">
                                     <Key className="w-5 h-5"/>
                                 </button>
                                 <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
