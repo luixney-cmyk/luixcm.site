@@ -50,7 +50,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw } from 'lucide-react';
+        import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw, Book, Calendar } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -196,6 +196,7 @@
             
             const [strategies, setStrategies] = useState([]);
             const [aliases, setAliases] = useState([]);
+            const [knowledgeBase, setKnowledgeBase] = useState([]); // NUEVO: Estado para Base de Conocimiento
             
             const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
             const [isPurging, setIsPurging] = useState(false);
@@ -214,6 +215,12 @@
             const [editingStrategyText, setEditingStrategyText] = useState("");
             const [strategySuccessMsg, setStrategySuccessMsg] = useState("");
 
+            // NUEVO: Estados para Base de Conocimiento
+            const [newKnowledgeTitle, setNewKnowledgeTitle] = useState("");
+            const [newKnowledgeContent, setNewKnowledgeContent] = useState("");
+            const [isSavingKnowledge, setIsSavingKnowledge] = useState(false);
+            const [knowledgeSuccessMsg, setKnowledgeSuccessMsg] = useState("");
+
             const [newPostText, setNewPostText] = useState("");
             const [newCommentsText, setNewCommentsText] = useState("");
             const [isGenerating, setIsGenerating] = useState(false);
@@ -227,6 +234,7 @@
             const [aiReports, setAiReports] = useState([]);
             const [isGeneratingReport, setIsGeneratingReport] = useState(false);
             const [viewingReport, setViewingReport] = useState(null);
+            const [reportPeriod, setReportPeriod] = useState('semanal'); // NUEVO: 'semanal' o 'mensual'
 
             const [isApiModalOpen, setIsApiModalOpen] = useState(false);
             const [tempApiKey, setTempApiKey] = useState("");
@@ -263,6 +271,7 @@
                 const strategiesRef = collection(db, 'artifacts', appId, 'users', uid, 'strategies'); 
                 const reportsRef = collection(db, 'artifacts', appId, 'users', uid, 'ai_reports'); 
                 const aliasesRef = collection(db, 'artifacts', appId, 'users', uid, 'user_aliases'); 
+                const knowledgeRef = collection(db, 'artifacts', appId, 'users', uid, 'knowledge_base'); // NUEVO
 
                 const handleFirestoreError = async (err) => {
                     console.error(err);
@@ -303,7 +312,13 @@
                     setAliases(fetchedAliases);
                 }, handleFirestoreError);
 
-                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); unsubAliases(); };
+                const unsubKnowledge = onSnapshot(knowledgeRef, (snap) => {
+                    const fetchedDocs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    fetchedDocs.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                    setKnowledgeBase(fetchedDocs);
+                }, handleFirestoreError);
+
+                return () => { unsubPosts(); unsubComments(); unsubStrategies(); unsubReports(); unsubAliases(); unsubKnowledge(); };
             }, [user]);
 
             const handleLogin = async () => {
@@ -350,7 +365,7 @@
                         createdAt: serverTimestamp()
                     });
                     setNewStrategyText("");
-                    setStrategySuccessMsg("¡Instrucción guardada exitosamente!");
+                    setStrategySuccessMsg("¡Instrucción guardada!");
                     setTimeout(() => setStrategySuccessMsg(""), 3000);
                 } catch (err) { setErrorMsg("Error al guardar la estrategia."); } 
                 finally { setIsSavingStrategy(false); }
@@ -377,6 +392,31 @@
                     setEditingStrategyId(null);
                     setEditingStrategyText("");
                 } catch (err) { setErrorMsg("Error al actualizar la estrategia."); }
+            };
+
+            // NUEVO: Funciones para Base de Conocimiento
+            const saveNewKnowledge = async () => {
+                if (!newKnowledgeTitle.trim() || !newKnowledgeContent.trim()) return;
+                setIsSavingKnowledge(true);
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'knowledge_base'), {
+                        title: newKnowledgeTitle.trim(),
+                        content: newKnowledgeContent.trim(),
+                        createdAt: serverTimestamp()
+                    });
+                    setNewKnowledgeTitle("");
+                    setNewKnowledgeContent("");
+                    setKnowledgeSuccessMsg("¡Documento guardado!");
+                    setTimeout(() => setKnowledgeSuccessMsg(""), 3000);
+                } catch (err) { setErrorMsg("Error al guardar el documento."); } 
+                finally { setIsSavingKnowledge(false); }
+            };
+
+            const deleteKnowledge = async (id) => {
+                if(confirm("¿Estás seguro de eliminar este documento de referencia?")) {
+                    try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'knowledge_base', id)); } 
+                    catch (err) { setErrorMsg("Error al eliminar el documento."); }
+                }
             };
 
             const openAliasModal = (originalName) => {
@@ -557,6 +597,11 @@
 
                 const combinedStrategies = strategies.map(s => `- ${s.text}`).join('\n');
                 
+                // NUEVO: Agregar la base de conocimiento al prompt
+                const knowledgeBaseText = knowledgeBase.length > 0 
+                    ? `\nDOCUMENTOS DE REFERENCIA (BASE DE CONOCIMIENTO - Úsalos si la pregunta del usuario lo requiere para dar datos precisos):\n${knowledgeBase.map(k => `[DOCUMENTO: ${k.title}]:\n${k.content}`).join('\n\n')}` 
+                    : "";
+
                 const postContext = activePost.context?.trim() ? `\nCONTEXTO ESPECÍFICO DEL POST:\n${activePost.context}` : "";
                 const postSpecificInstruction = activePost.postInstruction?.trim() ? `\nINSTRUCCIÓN ESPECÍFICA PARA ESTA PUBLICACIÓN (PRIORIDAD ALTA):\n${activePost.postInstruction}` : "";
                 const globalContext = combinedStrategies ? `\nESTRATEGIAS GLOBALES ACTIVAS:\n${combinedStrategies}` : "";
@@ -571,11 +616,12 @@
                     ${postSpecificInstruction}
                     ${activeAliasesText}
                     ${globalContext}
+                    ${knowledgeBaseText}
                     
                     REGLAS Y GUARDRAILS OBLIGATORIOS (CERO TOLERANCIA):
                     1. IDENTIDAD ABSOLUTA (¡IMPORTANTE!): TÚ ERES LA SENADORA. Habla siempre en primera persona del singular ("Yo", "Agradezco", "Estoy trabajando") o plural inclusivo ("Estamos"). ESTÁ ESTRICTAMENTE PROHIBIDO responder en tercera persona. NUNCA digas "La senadora agradece...", "De parte de la senadora" o "El equipo de Ivideliza".
                     2. CRÍTICO Y OBLIGATORIO: Nunca uses la misma estructura de frase dos veces seguidas en este bloque de respuestas. Varía tu vocabulario (ej. "Gracias", "Te agradezco", "Qué gusto leerte", "Valoro tu mensaje") para que ninguna respuesta se parezca a la anterior. ¡Sé natural y orgánica!
-                    3. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto, no la menciones.
+                    3. No inventes datos, cifras, logros, denuncias, gestiones ni hechos. Si no hay información en el contexto o en la Base de Conocimiento, no la menciones.
                     4. No prometas resolver casos individuales ni gestiones específicas.
                     5. No hagas acusaciones directas sin evidencia explícita en el contexto.
                     6. Mantén las respuestas de máximo 1 o 2 frases, salvo que el enfoque Legislativo o Político requiera un poco más de desarrollo.
@@ -778,20 +824,32 @@
             const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             const currentMonthName = monthNames[currentMonth];
             
-            const monthlyPosts = posts.filter(p => {
-                if (!p.createdAt) return false;
-                const d = p.createdAt.toDate();
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
+            // NUEVA LÓGICA: Filtrar por mes o por semana para el reporte
+            const getReportData = () => {
+                const now = new Date();
+                const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                
+                const targetPosts = posts.filter(p => {
+                    if (!p.createdAt) return false;
+                    const d = p.createdAt.toDate();
+                    if (reportPeriod === 'semanal') return d >= oneWeekAgo;
+                    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                });
 
-            const monthlyComments = comments.filter(c => {
-                if (!c.createdAt) return false;
-                const d = c.createdAt.toDate();
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
+                const targetComments = comments.filter(c => {
+                    if (!c.createdAt) return false;
+                    const d = c.createdAt.toDate();
+                    if (reportPeriod === 'semanal') return d >= oneWeekAgo;
+                    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                });
+
+                return { targetPosts, targetComments };
+            };
+
+            const { targetPosts: reportPosts, targetComments: reportComments } = getReportData();
 
             let sentPos = 0, sentNeu = 0, sentRec = 0, sentCrit = 0, sentNeg = 0, sentEsc = 0;
-            monthlyComments.forEach(c => {
+            reportComments.forEach(c => {
                 const s = c.sentiment || '';
                 if (s === 'Positivo') sentPos++;
                 else if (s === 'Neutro') sentNeu++;
@@ -802,7 +860,7 @@
             });
 
             const catCounts = { Social: 0, Familiar: 0, Legislativa: 0, Política: 0 };
-            monthlyPosts.forEach(p => { 
+            reportPosts.forEach(p => { 
                 const cats = getPostCategories(p);
                 cats.forEach(c => { if(catCounts[c] !== undefined) catCounts[c]++; });
             });
@@ -812,20 +870,19 @@
                 if (count > maxCount) { maxCount = count; topCat = cat; }
             }
 
-            const avgEngagement = monthlyPosts.length > 0 ? (monthlyComments.length / monthlyPosts.length).toFixed(1) : 0;
-
             const runGenerateReport = async (currentApiKey) => {
                 setIsGeneratingReport(true);
                 
-                const sampleTexts = monthlyPosts.map(p => p.text).join(" | ").substring(0, 3000);
+                const sampleTexts = reportPosts.map(p => p.text).join(" | ").substring(0, 3000);
+                const periodLabel = reportPeriod === 'semanal' ? 'la última semana' : `el mes de ${currentMonthName} ${currentYear}`;
 
                 const prompt = `
-                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes para el mes de ${currentMonthName} ${currentYear}.
+                    Actúa como Consultor Político Estratega. Analiza el desempeño de comunicación en redes de la Senadora Ivideliza Reyes para ${periodLabel}.
                     
-                    Datos del mes:
-                    - Publicaciones totales: ${monthlyPosts.length}
+                    Datos del periodo:
+                    - Publicaciones totales: ${reportPosts.length}
                     - Desglose por enfoque (una publicación puede tener varios): ${JSON.stringify(catCounts)}
-                    - Comentarios totales recibidos: ${monthlyComments.length}
+                    - Comentarios totales recibidos: ${reportComments.length}
                     - Sentimientos (Detalle estratégico):
                         * Apoyo ciudadano (Positivo): ${sentPos}
                         * Neutrales: ${sentNeu}
@@ -839,7 +896,7 @@
                     Extrae y genera un JSON estricto con:
                     1. "temaPrincipal": Cuál fue el tema más recurrente o importante.
                     2. "analisisSituacion": Un párrafo sobre la temperatura ciudadana (distinguiendo entre los que se quejan del gobierno y los que atacan a la senadora).
-                    3. "propuestas": Array con 3 propuestas de mejora.
+                    3. "propuestas": Array con 3 propuestas de mejora o acciones a seguir basadas en estos datos.
                 `;
 
                 const payload = {
@@ -861,11 +918,14 @@
                     const data = await fetchGeminiWithRetry(payload, currentApiKey);
                     const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
                     
+                    const reportTitle = reportPeriod === 'semanal' 
+                        ? `Reporte Semanal (${new Date().toLocaleDateString()})` 
+                        : `Reporte ${currentMonthName} ${currentYear}`;
+
                     await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ai_reports'), {
-                        title: `Reporte ${currentMonthName} ${currentYear}`,
+                        title: reportTitle,
                         report: result,
-                        month: currentMonth,
-                        year: currentYear,
+                        period: reportPeriod,
                         createdAt: serverTimestamp()
                     });
                 } catch (err) { setErrorMsg("Error al generar el reporte de IA."); } 
@@ -985,6 +1045,7 @@
 
                         <div className="flex-1 overflow-y-auto">
                         
+                        {/* VISTA DE GESTIÓN (POSTS Y COMENTARIOS) */}
                         {currentView === 'manager' && (
                             <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
                             {!activePostId ? (
@@ -1035,12 +1096,49 @@
                                             })}
                                         </div>
                                     </div>
+
+                                    {/* NUEVO: Mini Reporte de la Publicación Actual */}
+                                    {activeComments.length > 0 && (
+                                        <div className="mt-5 border-t border-slate-100 pt-4">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <BarChart3 className="w-4 h-4 text-blue-500"/>
+                                                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Reporte Rápido de esta Publicación</p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 text-[10px] font-bold">
+                                                {(() => {
+                                                    const counts = { Positivo: 0, Neutro: 0, 'Reclamo ciudadano': 0, 'Crítica externa': 0, Negativo: 0, Escalar: 0 };
+                                                    activeComments.forEach(c => {
+                                                        const s = c.sentiment === 'Reclamo' ? 'Reclamo ciudadano' : c.sentiment;
+                                                        if (counts[s] !== undefined) counts[s]++;
+                                                    });
+                                                    
+                                                    const badges = [
+                                                        { key: 'Positivo', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' },
+                                                        { key: 'Neutro', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+                                                        { key: 'Reclamo ciudadano', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-200' },
+                                                        { key: 'Crítica externa', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-200' },
+                                                        { key: 'Negativo', bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' },
+                                                        { key: 'Escalar', bg: 'bg-red-200', text: 'text-red-900', border: 'border-red-400' }
+                                                    ];
+
+                                                    return badges.map(b => counts[b.key] > 0 ? (
+                                                        <span key={b.key} className={`px-2 py-1 rounded-md border ${b.bg} ${b.text} ${b.border}`}>
+                                                            {b.key}: {counts[b.key]}
+                                                        </span>
+                                                    ) : null);
+                                                })()}
+                                                <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200 ml-auto">
+                                                    Total: {activeComments.length}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
                                     <h3 className="text-sm font-bold text-slate-700 mb-2">2. Pega los comentarios a responder</h3>
                                     <textarea value={newCommentsText} onChange={(e) => setNewCommentsText(e.target.value)} placeholder="Pega aquí los comentarios copiados de Facebook..." className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-blue-500 outline-none resize-none text-sm mb-3" />
-                                    <button onClick={handleGenerateResponses} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold">
+                                    <button onClick={handleGenerateResponses} disabled={!newCommentsText.trim() || isGenerating} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-colors">
                                     {isGenerating ? "Analizando y Redactando..." : <><Send className="w-5 h-5" /> Generar Respuestas</>}
                                     </button>
                                 </div>
@@ -1205,13 +1303,70 @@
                             </div>
                         )}
 
+                        {/* VISTA DE ESTRATEGIA (REPORTES Y CONOCIMIENTO) */}
                         {currentView === 'analysis' && (
-                            <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
+                            <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6 pb-20">
+                            
+                            {/* SECCIÓN: BASE DE CONOCIMIENTO (NUEVO) */}
+                            <div className="bg-white rounded-2xl shadow-sm border-2 border-indigo-100 overflow-hidden">
+                                <div className="bg-indigo-50 p-4 border-b border-indigo-100 flex items-center gap-3">
+                                    <Book className="w-6 h-6 text-indigo-700" />
+                                    <div>
+                                        <h2 className="font-bold text-indigo-900 text-lg">Base de Conocimiento (Documentos)</h2>
+                                        <p className="text-xs text-indigo-700">Pega textos de leyes, programas o artículos para que la IA los use de referencia al responder.</p>
+                                    </div>
+                                </div>
+                                <div className="p-5">
+                                    <div className="space-y-3">
+                                        <input 
+                                            type="text" 
+                                            value={newKnowledgeTitle}
+                                            onChange={(e) => setNewKnowledgeTitle(e.target.value)}
+                                            placeholder="Título del documento (Ej. Resumen Ley de Movilidad)"
+                                            className="w-full p-3 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none text-sm"
+                                        />
+                                        <textarea 
+                                            value={newKnowledgeContent} 
+                                            onChange={(e) => setNewKnowledgeContent(e.target.value)} 
+                                            placeholder="Pega aquí el contenido de texto del documento..." 
+                                            className="w-full h-32 p-3 rounded-lg border border-slate-300 focus:border-indigo-500 outline-none resize-none text-sm" 
+                                        />
+                                    </div>
+                                    <div className="mt-3 flex justify-between items-center">
+                                        <div className="text-sm font-medium text-green-600 flex items-center gap-1 min-h-[24px]">
+                                            {knowledgeSuccessMsg && <><Check className="w-4 h-4"/> {knowledgeSuccessMsg}</>}
+                                        </div>
+                                        <button onClick={saveNewKnowledge} disabled={isSavingKnowledge || !newKnowledgeTitle.trim() || !newKnowledgeContent.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors">
+                                            {isSavingKnowledge ? "Guardando..." : "Guardar Documento"}
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {knowledgeBase.length > 0 && (
+                                    <div className="border-t border-indigo-100">
+                                        <div className="bg-slate-50 p-3 border-b border-slate-100">
+                                            <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500"/> Documentos Guardados</h3>
+                                        </div>
+                                        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto">
+                                            {knowledgeBase.map((k, index) => (
+                                                <div key={k.id} className="p-3 bg-white border border-slate-200 rounded-lg flex flex-col gap-2 relative group hover:border-indigo-300 transition-colors">
+                                                    <h4 className="font-bold text-sm text-indigo-800 line-clamp-1 pr-6">{k.title}</h4>
+                                                    <p className="text-xs text-slate-500 line-clamp-2">{k.content}</p>
+                                                    <button onClick={() => deleteKnowledge(k.id)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar documento">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-purple-100 overflow-hidden">
                                 <div className="bg-purple-50 p-4 border-b border-purple-100 flex items-center gap-3">
                                 <Target className="w-6 h-6 text-purple-700" />
                                 <div>
-                                    <h2 className="font-bold text-purple-900 text-lg">Estrategia Global (Aplica a todo)</h2>
+                                    <h2 className="font-bold text-purple-900 text-lg">Estrategia Global (Instrucciones)</h2>
                                     <p className="text-xs text-purple-700">Líneas discursivas que Gemini considerará en todas las respuestas.</p>
                                 </div>
                                 </div>
@@ -1223,7 +1378,7 @@
                                         {strategySuccessMsg && <><Check className="w-4 h-4"/> {strategySuccessMsg}</>}
                                     </div>
                                     <button onClick={saveNewStrategy} disabled={isSavingStrategy || !newStrategyText.trim()} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl font-bold disabled:opacity-50 transition-colors">
-                                    {isSavingStrategy ? "Guardando..." : "Agregar a la lista"}
+                                    {isSavingStrategy ? "Guardando..." : "Agregar instrucción"}
                                     </button>
                                 </div>
                                 </div>
@@ -1266,20 +1421,29 @@
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 
-                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                                        <BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas de {currentMonthName}
-                                    </h3>
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-full">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <BarChart3 className="w-5 h-5 text-blue-500"/> Estadísticas Activas
+                                        </h3>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                                            <button onClick={() => setReportPeriod('semanal')} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${reportPeriod === 'semanal' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>Semanal</button>
+                                            <button onClick={() => setReportPeriod('mensual')} className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${reportPeriod === 'mensual' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>Mensual</button>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-4 bg-blue-50 p-2 rounded-lg border border-blue-100">
+                                        Mostrando datos de: <span className="font-bold text-blue-700">{reportPeriod === 'semanal' ? 'Últimos 7 días' : currentMonthName + ' ' + currentYear}</span>
+                                    </p>
                                     
                                     <div className="grid grid-cols-2 gap-4 mb-5">
                                         <div className="bg-blue-50 rounded-xl p-4 text-center border border-blue-100 flex flex-col items-center justify-center">
                                             <FileText className="w-5 h-5 text-blue-400 mb-1" />
-                                            <p className="text-3xl font-black text-blue-700">{monthlyPosts.length}</p>
+                                            <p className="text-3xl font-black text-blue-700">{reportPosts.length}</p>
                                             <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Posteos</p>
                                         </div>
                                         <div className="bg-slate-50 rounded-xl p-4 text-center border border-slate-200 flex flex-col items-center justify-center">
                                             <MessageCircle className="w-5 h-5 text-slate-400 mb-1" />
-                                            <p className="text-3xl font-black text-slate-700">{monthlyComments.length}</p>
+                                            <p className="text-3xl font-black text-slate-700">{reportComments.length}</p>
                                             <p className="text-[10px] font-bold text-slate-600 uppercase mt-1">Comentarios Analizados</p>
                                         </div>
                                     </div>
@@ -1312,30 +1476,34 @@
                                         </div>
                                     </div>
 
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Enfoque Predominante</p>
-                                    <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100 flex items-center justify-between">
-                                        <div>
-                                            <p className="text-[10px] font-bold text-indigo-500 uppercase">Más usado</p>
-                                            <p className="text-sm font-bold text-indigo-700">{topCat}</p>
+                                    <div className="mt-auto">
+                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Enfoque Predominante</p>
+                                        <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100 flex items-center justify-between">
+                                            <div>
+                                                <p className="text-[10px] font-bold text-indigo-500 uppercase">Más usado</p>
+                                                <p className="text-sm font-bold text-indigo-700">{topCat}</p>
+                                            </div>
+                                            <Megaphone className="w-5 h-5 text-indigo-300" />
                                         </div>
-                                        <Megaphone className="w-5 h-5 text-indigo-300" />
                                     </div>
                                 </div>
 
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full max-h-[600px]">
                                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl shrink-0">
                                         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-500"/> Consultorías IA</h3>
-                                        <button onClick={generateAIReport} disabled={isGeneratingReport || monthlyPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-1">
-                                        {isGeneratingReport ? "Analizando..." : <><Plus className="w-3 h-3"/> Nuevo Reporte</>}
+                                        <button onClick={generateAIReport} disabled={isGeneratingReport || reportPosts.length === 0} className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2 rounded-lg font-bold disabled:opacity-50 transition-colors flex items-center gap-1 shadow-sm">
+                                            {isGeneratingReport ? "Analizando..." : <><Plus className="w-3 h-3"/> Generar Reporte {reportPeriod === 'semanal' ? 'Semanal' : 'Mensual'}</>}
                                         </button>
                                     </div>
                                     <div className="p-3 flex-1 overflow-y-auto space-y-2">
                                         {aiReports.length === 0 ? (
-                                        <p className="text-sm text-slate-400 text-center mt-10">Aún no hay reportes generados. Genera uno al finalizar el mes.</p>
+                                        <p className="text-sm text-slate-400 text-center mt-10">Aún no hay reportes generados. Genera uno usando los datos actuales.</p>
                                         ) : (
                                             aiReports.map((rep, index) => (
                                                 <button key={rep.id} onClick={() => setViewingReport(rep)} className="w-full text-left p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50 transition-all flex items-center gap-3">
-                                                    <div className="bg-white p-2 rounded-lg border border-slate-100 shadow-sm"><FileClock className="w-5 h-5 text-amber-600"/></div>
+                                                    <div className="bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                                                        {rep.period === 'semanal' ? <Calendar className="w-5 h-5 text-blue-500"/> : <FileClock className="w-5 h-5 text-amber-600"/>}
+                                                    </div>
                                                     <div>
                                                         <p className="font-bold text-slate-700 text-sm">{rep.title || `Reporte 0${index + 1}`}</p>
                                                         <p className="text-xs text-slate-400">{rep.createdAt?.toDate().toLocaleDateString() || 'Generado recientemente'}</p>
@@ -1352,12 +1520,16 @@
                         </div>
                     </main>
 
+                    {}
                     {/* MODAL PARA VER REPORTE IA */}
                     {viewingReport && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
                                 <div className="p-4 border-b flex justify-between items-center bg-amber-50">
-                                    <h2 className="font-bold text-amber-900 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-600" /> {viewingReport.title || 'Reporte de Consultoría'}</h2>
+                                    <h2 className="font-bold text-amber-900 flex items-center gap-2">
+                                        {viewingReport.period === 'semanal' ? <Calendar className="w-5 h-5 text-blue-600" /> : <Lightbulb className="w-5 h-5 text-amber-600" />}
+                                        {viewingReport.title || 'Reporte de Consultoría'}
+                                    </h2>
                                     <button onClick={() => setViewingReport(null)} className="p-1 hover:bg-amber-100 rounded-lg transition-colors"><X className="w-6 h-6 text-amber-700" /></button>
                                 </div>
                                 <div className="p-6 overflow-y-auto space-y-6">
@@ -1545,7 +1717,7 @@
                         </div>
                     )}
 
-                    {/* NUEVO: MODAL PARA REGENERAR RESPUESTA ESPECÍFICA */}
+                    {/* MODAL PARA REGENERAR RESPUESTA ESPECÍFICA */}
                     {regeneratingCommentId && commentBeingRegenerated && (
                         <div className="fixed inset-0 bg-black/60 z-[55] flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-purple-200">
