@@ -5,13 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestor CM - Sen. Ivideliza Reyes</title>
     
-    <!-- 1. Cargar Tailwind CSS para el diseño -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. Cargar Babel para traducir React en el navegador -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 3. Importar React, iconos y Firebase -->
     <script type="importmap">
     {
         "imports": {
@@ -25,7 +22,6 @@
     }
     </script>
 
-    <!-- Capturador de errores global -->
     <script>
         window.addEventListener('error', function(event) {
             const root = document.getElementById('root');
@@ -38,7 +34,6 @@
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
     
     <div id="root">
-        <!-- Loader inicial nativo -->
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; color:#64748b;">
             <div style="width:40px; height:40px; border:4px solid #3b82f6; border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></div>
             <p style="margin-top:20px; font-weight:bold;">Cargando Gestor CM...</p>
@@ -46,18 +41,15 @@
         </div>
     </div>
 
-    <!-- 4. El Código de tu Aplicación -->
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        // Se añaden iconos para el nuevo buscador: Search, FolderSearch, Filter
         import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw, Book, Calendar, Search, FolderSearch, Filter } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 
-        // --- CREDENCIALES DE FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyA7xjysJVQb3tYEb8ZU9yHbs-MBDWVUhk4",
             authDomain: "gestor-ivi.firebaseapp.com",
@@ -84,7 +76,6 @@
                    firebaseUser.emailVerified === true;
         };
 
-        // --- FUNCIONES UTILITARIAS ---
         const copyToClipboard = (text) => {
             const textArea = document.createElement("textarea");
             textArea.value = text;
@@ -101,7 +92,6 @@
 
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-        // --- CONFIGURACIÓN DE GEMINI ---
         const GEMINI_MODEL = "gemini-2.5-flash";
 
         const fetchGeminiWithRetry = async (payload, apiKey, retries = 4) => {
@@ -180,11 +170,9 @@
             }
         };
 
-        // --- APLICACIÓN PRINCIPAL ---
         function App() {
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
-            // ESTADO PRINCIPAL DE NAVEGACIÓN: manager, analysis, o extractor
             const [currentView, setCurrentView] = useState('manager'); 
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -239,7 +227,7 @@
             const [reportPeriod, setReportPeriod] = useState('custom'); 
             const [reportDays, setReportDays] = useState(8); 
 
-            // NUEVO: Estados para la sección Extractor de Comentarios (Búsqueda IA)
+            // Estados para Extractor de Comentarios
             const [extractTopic, setExtractTopic] = useState("");
             const [extractDays, setExtractDays] = useState(8);
             const [isExtracting, setIsExtracting] = useState(false);
@@ -980,71 +968,80 @@
                 setErrorMsg("");
                 setExtractedResults(null);
 
-                const now = new Date();
-                const startDate = new Date();
-                startDate.setDate(now.getDate() - extractDays);
+                try {
+                    const now = new Date();
+                    const startDate = new Date();
+                    startDate.setDate(now.getDate() - extractDays);
 
-                // 1. Filtrar comentarios recientes
-                const recentComments = comments.filter(c => c.createdAt && c.createdAt.toDate() >= startDate);
-                
-                if (recentComments.length === 0) {
-                    setIsExtracting(false);
-                    setErrorMsg("No hay comentarios registrados en este periodo de tiempo.");
-                    return;
-                }
-
-                // 2. Preparar datos para Gemini (incluyendo el texto del post asociado)
-                const commentsData = recentComments.map(c => {
-                    const relatedPost = posts.find(p => p.id === c.postId);
-                    const postSnippet = relatedPost ? relatedPost.text.substring(0, 150) + '...' : 'Publicación no encontrada';
-                    return `[ID: ${c.id}] Usuario: ${c.nombreUsuario} | Comentario: "${c.originalComment}" | Post asociado: "${postSnippet}"`;
-                }).join('\n');
-
-                // 3. Prompt para buscar el tema semánticamente
-                const prompt = `
-                    Actúa como Analista de Datos Cualitativos. 
-                    El usuario quiere extraer los comentarios de redes sociales que hablen o se relacionen con el siguiente tema específico: "${extractTopic}".
+                    let recentComments = comments.filter(c => c.createdAt && c.createdAt.toDate() >= startDate);
                     
-                    Revisa detenidamente la siguiente lista de comentarios y selecciona SOLO aquellos que coincidan de forma directa o implícita con el tema solicitado.
-                    
-                    LISTA DE COMENTARIOS A ANALIZAR:
-                    ${commentsData}
+                    if (recentComments.length === 0) {
+                        setErrorMsg("No hay comentarios registrados en este periodo de tiempo.");
+                        setIsExtracting(false);
+                        return;
+                    }
 
-                    Devuelve un JSON estricto con un arreglo llamado "resultados". Cada elemento debe tener:
-                    - "id": El ID exacto del comentario (el código alfanumérico que viene después de [ID: ).
-                    - "razon": Una frase corta (máximo 15 palabras) explicando por qué este comentario coincide con el tema.
+                    // LÍMITE DE SEGURIDAD: Prevenir que la petición sea gigante y congele el sistema
+                    if (recentComments.length > 400) {
+                        recentComments = recentComments.slice(0, 400); 
+                    }
 
-                    Si ningún comentario habla de ese tema, devuelve un arreglo vacío: {"resultados": []}.
-                `;
+                    // Preparar datos limpios para Gemini
+                    const commentsData = recentComments.map(c => {
+                        const relatedPost = posts.find(p => p.id === c.postId);
+                        const postSnippet = relatedPost ? relatedPost.text.substring(0, 100).replace(/\n/g, ' ') : 'Sin post';
+                        const cleanComment = (c.originalComment || "").replace(/\n/g, ' ');
+                        return `[ID: ${c.id}] Usuario: ${c.nombreUsuario} | Post: "${postSnippet}" | Comentario: "${cleanComment}"`;
+                    }).join('\n');
 
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                resultados: {
-                                    type: "ARRAY",
-                                    items: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            id: { type: "STRING" },
-                                            razon: { type: "STRING" }
+                    const prompt = `
+                        Actúa como Analista de Datos Cualitativos. 
+                        El usuario quiere extraer los comentarios de redes sociales que hablen o se relacionen con el siguiente tema específico: "${extractTopic}".
+                        
+                        Revisa detenidamente la siguiente lista de comentarios y selecciona SOLO aquellos que coincidan de forma directa o implícita con el tema solicitado.
+                        
+                        LISTA DE COMENTARIOS A ANALIZAR:
+                        ${commentsData}
+
+                        Devuelve un JSON estricto con un arreglo llamado "resultados". Cada elemento debe tener:
+                        - "id": El ID exacto del comentario (el código alfanumérico que viene después de [ID: ).
+                        - "razon": Una frase corta (máximo 15 palabras) explicando por qué este comentario coincide con el tema.
+
+                        Si ningún comentario habla de ese tema, devuelve un arreglo vacío: {"resultados": []}.
+                    `;
+
+                    const payload = {
+                        contents: [{ parts: [{ text: prompt }] }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "OBJECT",
+                                properties: {
+                                    resultados: {
+                                        type: "ARRAY",
+                                        items: {
+                                            type: "OBJECT",
+                                            properties: {
+                                                id: { type: "STRING" },
+                                                razon: { type: "STRING" }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                };
+                    };
 
-                try {
                     const data = await fetchGeminiWithRetry(payload, currentApiKey);
-                    const resultJson = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
                     
-                    // 4. Mapear los resultados de IA con los datos reales de la base de datos
-                    const matchedResults = resultJson.resultados.map(res => {
+                    let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) throw new Error("La IA no devolvió resultados (Posible bloqueo de red).");
+                    
+                    // Limpieza extra en caso de que Gemini añada texto extra
+                    jsonText = jsonText.replace(/^```(json)?/im, '').replace(/```$/im, '').trim();
+                    const resultJson = JSON.parse(jsonText);
+                    
+                    const matchedResults = (resultJson.resultados || []).map(res => {
                         const originalComment = recentComments.find(c => c.id === res.id);
                         if (!originalComment) return null;
                         const originalPost = posts.find(p => p.id === originalComment.postId);
@@ -1057,9 +1054,10 @@
 
                     setExtractedResults(matchedResults);
                 } catch (err) {
-                    setErrorMsg("Error al extraer los comentarios. " + (err.message || ""));
+                    console.error("Error en IA Extractor:", err);
+                    setErrorMsg("Error al extraer los comentarios: " + (err.message || "Fallo en la red. Intenta con menos días."));
                 } finally {
-                    setIsExtracting(false);
+                    setIsExtracting(false); // Siempre detenemos la ruedita, pase lo que pase
                 }
             };
 
@@ -1155,7 +1153,6 @@
                             <button onClick={() => setCurrentView('analysis')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'analysis' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>
                                 <BarChart3 className="w-4 h-4" /> Estrategia
                             </button>
-                            {/* NUEVO BOTÓN: Búsqueda IA (Escritorio) */}
                             <button onClick={() => setCurrentView('extractor')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'extractor' ? 'bg-white shadow-sm text-teal-700' : 'text-slate-500 hover:text-slate-700'}`}>
                                 <FolderSearch className="w-4 h-4" /> Búsqueda IA
                             </button>
@@ -1173,7 +1170,6 @@
                         </div>
                         </header>
 
-                        {/* NUEVOS BOTONES MÓVIL */}
                         <div className="md:hidden flex bg-white border-b border-slate-200 shrink-0 overflow-x-auto">
                             <button onClick={() => setCurrentView('manager')} className={`flex-1 py-3 px-4 text-sm font-bold text-center border-b-2 whitespace-nowrap ${currentView === 'manager' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Gestión</button>
                             <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 px-4 text-sm font-bold text-center border-b-2 whitespace-nowrap ${currentView === 'analysis' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
@@ -1186,7 +1182,7 @@
 
                         <div className="flex-1 overflow-y-auto">
                         
-                        {/* VISTA DE GESTIÓN (POSTS Y COMENTARIOS) */}
+                        {}
                         {currentView === 'manager' && (
                             <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
                             {!activePostId ? (
@@ -1443,11 +1439,10 @@
                             </div>
                         )}
 
-                        {/* VISTA DE ESTRATEGIA (REPORTES Y CONOCIMIENTO) */}
+                        {}
                         {currentView === 'analysis' && (
                             <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6 pb-20">
                             
-                            {/* SECCIÓN: BASE DE CONOCIMIENTO */}
                             <div className="bg-white rounded-2xl shadow-sm border-2 border-indigo-100 overflow-hidden">
                                 <div className="bg-indigo-50 p-4 border-b border-indigo-100 flex items-center gap-3">
                                     <Book className="w-6 h-6 text-indigo-700" />
@@ -1662,7 +1657,7 @@
                             </div>
                         )}
 
-                        {/* NUEVA VISTA: EXTRACTOR DE COMENTARIOS CON IA */}
+                        {}
                         {currentView === 'extractor' && (
                             <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6 pb-20">
                                 
@@ -1779,6 +1774,7 @@
                         </div>
                     </main>
 
+                    {}
                     {/* MODAL PARA VER REPORTE IA (ACTUALIZADO CON TEMAS) */}
                     {viewingReport && (
                         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -1801,7 +1797,6 @@
                                         <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed">{viewingReport.report?.analisisSituacion}</p>
                                     </div>
 
-                                    {/* SECCIÓN: TEMAS ESENCIALES POR SENTIMIENTO */}
                                     {viewingReport.report?.temasPorSentimiento && (
                                         <div>
                                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Temas esenciales comentados (Análisis de los usuarios)</p>
@@ -2031,7 +2026,6 @@
                             </div>
                             
                             <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                                {/* Contexto del Comentario */}
                                 <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Comentario original de {commentBeingRegenerated.nombreUsuario}:</p>
                                     <p className="text-slate-700 italic">"{commentBeingRegenerated.originalComment}"</p>
@@ -2042,7 +2036,6 @@
                                     </div>
                                 </div>
 
-                                {/* Campo para la instrucción */}
                                 <div>
                                     <label className="block text-sm font-bold text-purple-700 mb-2">¿Cómo quieres que sea la nueva respuesta?</label>
                                     <textarea 
