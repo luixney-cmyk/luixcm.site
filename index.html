@@ -11,7 +11,7 @@
     <!-- 2. Cargar Babel para traducir React en el navegador -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 3. Importar React, iconos y Firebase (Solución de dependencias) -->
+    <!-- 3. Importar React, iconos y Firebase -->
     <script type="importmap">
     {
         "imports": {
@@ -25,7 +25,7 @@
     }
     </script>
 
-    <!-- Capturador de errores global por si algo falla -->
+    <!-- Capturador de errores global -->
     <script>
         window.addEventListener('error', function(event) {
             const root = document.getElementById('root');
@@ -38,7 +38,7 @@
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
     
     <div id="root">
-        <!-- Loader inicial nativo para evitar pantalla blanca total -->
+        <!-- Loader inicial nativo -->
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; color:#64748b;">
             <div style="width:40px; height:40px; border:4px solid #3b82f6; border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></div>
             <p style="margin-top:20px; font-weight:bold;">Cargando Gestor CM...</p>
@@ -50,7 +50,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        // SE AÑADIERON NUEVOS ICONOS (Search, FolderSearch, Filter) PARA EL EXTRACTOR
+        // Se añaden iconos para el nuevo buscador: Search, FolderSearch, Filter
         import { Copy, Plus, Menu, X, Settings, MessageSquare, Send, CheckCircle2, ChevronRight, History, AlertTriangle, User, Users, FileText, BookOpen, Megaphone, BarChart3, TrendingUp, Target, Lightbulb, MessageCircle, LogOut, Key, Smile, Meh, Frown, Edit2, Trash2, FileClock, Check, Save, UserPlus, Eye, EyeOff, ShieldAlert, Ban, Sparkles, Trash, RefreshCw, Book, Calendar, Search, FolderSearch, Filter } from 'lucide-react';
         
         import { initializeApp } from 'firebase/app';
@@ -184,7 +184,8 @@
         function App() {
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
-            const [currentView, setCurrentView] = useState('manager'); // 'manager', 'analysis', 'extractor'
+            // ESTADO PRINCIPAL DE NAVEGACIÓN: manager, analysis, o extractor
+            const [currentView, setCurrentView] = useState('manager'); 
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
             const [posts, setPosts] = useState([]);
@@ -238,7 +239,7 @@
             const [reportPeriod, setReportPeriod] = useState('custom'); 
             const [reportDays, setReportDays] = useState(8); 
 
-            // NUEVO: Estados para Extractor de Comentarios
+            // NUEVO: Estados para la sección Extractor de Comentarios (Búsqueda IA)
             const [extractTopic, setExtractTopic] = useState("");
             const [extractDays, setExtractDays] = useState(8);
             const [isExtracting, setIsExtracting] = useState(false);
@@ -834,7 +835,6 @@
             const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             const currentMonthName = monthNames[currentMonth];
             
-            // Lógica para filtrar datos para el reporte
             const getReportData = () => {
                 const now = new Date();
                 let startDate = new Date();
@@ -975,7 +975,6 @@
             };
             const generateAIReport = () => executeWithApiKey(runGenerateReport);
 
-            // --- NUEVA LÓGICA: EXTRACTOR DE COMENTARIOS ---
             const runExtractComments = async (currentApiKey) => {
                 setIsExtracting(true);
                 setErrorMsg("");
@@ -985,7 +984,7 @@
                 const startDate = new Date();
                 startDate.setDate(now.getDate() - extractDays);
 
-                // Filtrar comentarios recientes
+                // 1. Filtrar comentarios recientes
                 const recentComments = comments.filter(c => c.createdAt && c.createdAt.toDate() >= startDate);
                 
                 if (recentComments.length === 0) {
@@ -994,13 +993,14 @@
                     return;
                 }
 
-                // Preparar datos para Gemini (ID, Usuario, Comentario, Post asociado)
+                // 2. Preparar datos para Gemini (incluyendo el texto del post asociado)
                 const commentsData = recentComments.map(c => {
                     const relatedPost = posts.find(p => p.id === c.postId);
                     const postSnippet = relatedPost ? relatedPost.text.substring(0, 150) + '...' : 'Publicación no encontrada';
                     return `[ID: ${c.id}] Usuario: ${c.nombreUsuario} | Comentario: "${c.originalComment}" | Post asociado: "${postSnippet}"`;
                 }).join('\n');
 
+                // 3. Prompt para buscar el tema semánticamente
                 const prompt = `
                     Actúa como Analista de Datos Cualitativos. 
                     El usuario quiere extraer los comentarios de redes sociales que hablen o se relacionen con el siguiente tema específico: "${extractTopic}".
@@ -1043,7 +1043,7 @@
                     const data = await fetchGeminiWithRetry(payload, currentApiKey);
                     const resultJson = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text);
                     
-                    // Mapear los resultados de IA con los datos reales de la BD
+                    // 4. Mapear los resultados de IA con los datos reales de la base de datos
                     const matchedResults = resultJson.resultados.map(res => {
                         const originalComment = recentComments.find(c => c.id === res.id);
                         if (!originalComment) return null;
@@ -1155,7 +1155,7 @@
                             <button onClick={() => setCurrentView('analysis')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'analysis' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>
                                 <BarChart3 className="w-4 h-4" /> Estrategia
                             </button>
-                            {/* NUEVO BOTÓN PARA BÚSQUEDA IA */}
+                            {/* NUEVO BOTÓN: Búsqueda IA (Escritorio) */}
                             <button onClick={() => setCurrentView('extractor')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${currentView === 'extractor' ? 'bg-white shadow-sm text-teal-700' : 'text-slate-500 hover:text-slate-700'}`}>
                                 <FolderSearch className="w-4 h-4" /> Búsqueda IA
                             </button>
@@ -1173,6 +1173,7 @@
                         </div>
                         </header>
 
+                        {/* NUEVOS BOTONES MÓVIL */}
                         <div className="md:hidden flex bg-white border-b border-slate-200 shrink-0 overflow-x-auto">
                             <button onClick={() => setCurrentView('manager')} className={`flex-1 py-3 px-4 text-sm font-bold text-center border-b-2 whitespace-nowrap ${currentView === 'manager' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Gestión</button>
                             <button onClick={() => setCurrentView('analysis')} className={`flex-1 py-3 px-4 text-sm font-bold text-center border-b-2 whitespace-nowrap ${currentView === 'analysis' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>Estrategia</button>
@@ -1666,7 +1667,7 @@
                             <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6 pb-20">
                                 
                                 <div className="bg-white rounded-2xl shadow-sm border-2 border-teal-100 overflow-hidden">
-                                    <div className="bg-teal-50 p-5 border-b border-teal-100 flex items-start gap-4">
+                                    <div className="bg-teal-50 p-5 border-b border-teal-100 flex flex-col md:flex-row items-start gap-4">
                                         <div className="bg-teal-100 p-3 rounded-xl border border-teal-200 shadow-sm shrink-0">
                                             <FolderSearch className="w-8 h-8 text-teal-700" />
                                         </div>
@@ -1748,7 +1749,7 @@
                                                                 <span className="font-bold text-slate-800 flex items-center gap-1"><User className="w-4 h-4 text-teal-600"/> {res.nombreUsuario}</span>
                                                                 <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{res.createdAt?.toDate().toLocaleDateString() || 'Reciente'}</span>
                                                             </div>
-                                                            <div className="text-[10px] bg-teal-50 text-teal-700 font-bold px-2 py-1 rounded-md border border-teal-100 max-w-[200px] truncate text-right">
+                                                            <div className="text-[10px] bg-teal-50 text-teal-700 font-bold px-2 py-1 rounded-md border border-teal-100 max-w-[200px] truncate text-right" title={res.matchReason}>
                                                                 Razón: {res.matchReason}
                                                             </div>
                                                         </div>
@@ -1763,8 +1764,8 @@
                                                         </div>
 
                                                         <div className="mt-3 flex justify-end">
-                                                            <button onClick={() => copyToClipboard(`Comentario de ${res.nombreUsuario}: "${res.originalComment}"\n---\nTema encontrado: ${res.matchReason}`)} className="text-xs flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg font-bold transition-colors shadow-sm">
-                                                                <Copy className="w-3 h-3"/> Copiar
+                                                            <button onClick={() => copyToClipboard(`Comentario de ${res.nombreUsuario}: "${res.originalComment}"\n---\nTema encontrado: ${res.matchReason}\nPost: ${res.postText}`)} className="text-xs flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg font-bold transition-colors shadow-sm">
+                                                                <Copy className="w-3 h-3"/> Copiar Detalle
                                                             </button>
                                                         </div>
                                                     </div>
